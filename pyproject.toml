@@ -1,0 +1,9 @@
+[project]
+name = "beatstep"
+version = "0.1.0"
+description = "Arturia BeatStep MIDI Remote Script for Ableton Live"
+requires-python = ">=3.6"
+dependencies = []
+
+[dependency-groups]
+dev = []
