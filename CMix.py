@@ -185,8 +185,11 @@ class CMix:
 
     @staticmethod
     def _track_to_button_id(track_index):
-        # track_index 0-15 -> button ID 1-16 (direct)
-        return track_index + 1
+        # Physical pads 1-8  (top row)    = software button IDs 9-16
+        # Physical pads 9-16 (bottom row) = software button IDs 1-8
+        if track_index < 8:
+            return track_index + 9
+        return track_index - 7
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
