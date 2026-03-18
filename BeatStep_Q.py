@@ -89,10 +89,10 @@ class BeatStep_Q(ControlSurface):
         # set encoder acceleration to "slow" on startup
         self._send_midi(self.QS.set_E_acceleration(0))
 
-        # Switch pads to CC mode so CMix button listeners receive events,
-        # then paint the initial LED state.
+        # Switch pads to CC mode so CMix button listeners receive events.
         self._activate_control_mode()
-        self._mix_mode._update_leds()
+        # Delay LED paint until after the init colour animation completes (tick 20).
+        self.schedule_message(25, self._mix_mode._update_leds)
 
     def _setup_control_buttons_and_encoders(self):
         """

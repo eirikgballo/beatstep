@@ -104,8 +104,10 @@ class CMix:
     # ── Event handlers ─────────────────────────────────────────────────────
 
     def _on_recall(self, value):
-        # Refresh on both press and release — hardware resets the LED on release,
-        # so we must re-assert the red state immediately after.
+        # The BeatStep hardware physically recalls its stored preset whenever the
+        # recall button fires, resetting pad modes and LED colours. Re-apply
+        # control mode immediately to restore CC mode on the pads, then repaint.
+        self._parent._activate_control_mode()
         self._update_leds()
 
     def _on_pad(self, pad_index, value):
