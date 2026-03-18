@@ -271,7 +271,7 @@ class BeatStep_Q(ControlSurface):
 
     def _create_mix_mode(self):
         self._mix_mode = CMix(self)
-        self._mix_mode.set_cntrl_button(self._cntrl_button)
+        self._mix_mode.set_recall_button(self._recall_button)
         for i in range(1, 17):
             self._mix_mode.set_pad_button(i - 1, getattr(self, '_' + str(i) + '_button'))
             self._mix_mode.set_encoder_button(i - 1, getattr(self, '_' + str(i) + '_encoder'))

@@ -78,15 +78,15 @@ class CMix:
             button.add_value_listener(listener)
         self._encoder_buttons[encoder_index] = button
 
-    def set_cntrl_button(self, button):
-        """Wire the cntrl ButtonElement."""
+    def set_recall_button(self, button):
+        """Wire the recall ButtonElement."""
         if self._cntrl_button is not None:
             try:
-                self._cntrl_button.remove_value_listener(self._on_cntrl)
+                self._cntrl_button.remove_value_listener(self._on_recall)
             except Exception:
                 pass
         if button is not None:
-            button.add_value_listener(self._on_cntrl)
+            button.add_value_listener(self._on_recall)
         self._cntrl_button = button
 
     # ── Listener factories ─────────────────────────────────────────────────
@@ -103,7 +103,7 @@ class CMix:
 
     # ── Event handlers ─────────────────────────────────────────────────────
 
-    def _on_cntrl(self, value):
+    def _on_recall(self, value):
         # Mix mode stays active; refresh LEDs to confirm.
         if value > 0:
             self._update_leds()
@@ -170,7 +170,7 @@ class CMix:
                 color = 'black'
             self._set_color(button_id, color)
 
-        self._set_color('cntrl', 'red')
+        self._set_color('recall', 'red')
 
     @staticmethod
     def _track_to_button_id(track_index):
