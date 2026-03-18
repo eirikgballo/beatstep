@@ -12,8 +12,8 @@ from _Framework import Task
 from _Framework.ButtonMatrixElement import ButtonMatrixElement
 from _Framework.DeviceComponent import DeviceComponent
 
-from .QControlComponent import QControlComponent
 from .QSetup import QSetup
+from .CMix import CMix
 
 ENCODER_MSG_IDS = (10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72)
 PAD_MSG_IDS = list(range(44, 52)) + list(range(36, 44))
@@ -43,9 +43,9 @@ class BeatStep_Q(ControlSurface):
             self._start_hardware_setup()
 
             self._create_controls()
-            self._create_Q_control()
+            self._create_mix_mode()
 
-            self._create_device()
+            # self._create_device()  # not used in new architecture
 
     def receive_midi(self, midi_bytes):
         # self.show_message(str(midi_bytes))
@@ -88,6 +88,11 @@ class BeatStep_Q(ControlSurface):
         self._send_midi(self.QS.set_B_velocity(0))
         # set encoder acceleration to "slow" on startup
         self._send_midi(self.QS.set_E_acceleration(0))
+
+        # Switch pads to CC mode so CMix button listeners receive events,
+        # then paint the initial LED state.
+        self._activate_control_mode()
+        self._mix_mode._update_leds()
 
     def _setup_control_buttons_and_encoders(self):
         """
@@ -178,13 +183,6 @@ class BeatStep_Q(ControlSurface):
 
     def _deactivate_control_mode(self):
         self._send_midi(self.QS.recall_preset(MEMORY_SLOT))
-        # make sure that buttons relevant for control-features
-        # are correctly set
-        # self._setup_control_buttons_and_encoders()
-
-        # set pad velocity
-        self._send_midi(self.QS.set_B_velocity(self._control_component._pad_velocity))
-
         self.control_layer_active = False
 
     def _activate_control_mode(self):
@@ -271,29 +269,21 @@ class BeatStep_Q(ControlSurface):
             ]
         )
 
+    def _create_mix_mode(self):
+        self._mix_mode = CMix(self)
+        self._mix_mode.set_cntrl_button(self._cntrl_button)
+        for i in range(1, 17):
+            self._mix_mode.set_pad_button(i - 1, getattr(self, '_' + str(i) + '_button'))
+            self._mix_mode.set_encoder_button(i - 1, getattr(self, '_' + str(i) + '_encoder'))
+
     def _create_Q_control(self):
+        # Kept for reference. Not used in new architecture.
+        pass
 
-        self._control_component = QControlComponent(self)
-        self._control_component.set_shift_button(self._shift_button)
-        self._control_component.set_stop_button(self._stop_button)
-        self._control_component.set_play_button(self._play_button)
-        self._control_component.set_play_S_button(self._play_S_button)
-        self._control_component.set_cntrl_button(self._cntrl_button)
-        self._control_component.set_chan_button(self._chan_button)
-        self._control_component.set_store_button(self._store_button)
-        self._control_component.set_recall_button(self._recall_button)
-
-        self._control_component.set_transpose_encoder_button(self._transpose_encoder)
-
-        for i in range(1, 17):
-            getattr(self._control_component, "set_" + str(i) + "_button")(
-                getattr(self, "_" + str(i) + "_button")
-            )
-
-        for i in range(1, 17):
-            getattr(self._control_component, "set_" + str(i) + "_encoder_button")(
-                getattr(self, "_" + str(i) + "_encoder")
-            )
+    def disconnect(self):
+        if hasattr(self, '_mix_mode'):
+            self._mix_mode.disconnect()
+        super(BeatStep_Q, self).disconnect()
 
     def _create_device(self):
         self._device = DeviceComponent(
