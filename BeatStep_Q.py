@@ -74,20 +74,17 @@ class BeatStep_Q(ControlSurface):
 
     def _init_color_sequence(self):
         # Custom CMix startup animation: pads 1-8 blink red 3 times.
-        # Each blink = on at tick T, off at tick T+3.  Three blinks spaced 8 ticks apart.
-        # After the animation (tick ~30), paint the normal Mix Mode LEDs.
-        BLINK_PADS = range(1, 9)
+        # Each pad is staggered by 1 tick to avoid dropped sysex messages.
+        # Blink 1: on ticks 1-8, off ticks 10-17
+        # Blink 2: on ticks 20-27, off ticks 29-36
+        # Blink 3: on ticks 39-46, off ticks 48-55
+        # Mix Mode LEDs paint at tick 60.
         for blink in range(3):
-            on_tick  = 2 + blink * 8
-            off_tick = on_tick + 3
-            for pad in BLINK_PADS:
-                self.schedule_message(on_tick,  self._B_color_callback(pad, 1))   # red
-                self.schedule_message(off_tick, self._B_color_callback(pad, 0))   # black
-        # Turn everything else off during the animation
-        for pad in range(9, 17):
-            self.schedule_message(2, self._B_color_callback(pad, 0))
-        # Paint normal Mix Mode LEDs after animation finishes
-        self.schedule_message(30, self._mix_mode._update_leds)
+            base = blink * 19
+            for pad in range(1, 9):
+                self.schedule_message(base + pad,      self._B_color_callback(pad, 1))  # red
+                self.schedule_message(base + pad + 9,  self._B_color_callback(pad, 0))  # off
+        self.schedule_message(60, self._mix_mode._update_leds)
 
     def _setup_hardware(self):
         self._init_color_sequence()
