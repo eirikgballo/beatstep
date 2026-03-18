@@ -173,8 +173,6 @@ class BeatStep_Q(ControlSurface):
             self._send_midi(self.QS.set_B_mode(i, 8))
             # set pad channel
             self._send_midi(self.QS.set_B_channel(i, CHANNEL))
-            # explicitly set the CC ID so it matches the ButtonElement definition
-            self._send_midi(self.QS.set_B_cc(i, PAD_MSG_IDS[i - 1]))
             # set pad behaviour to gate (127 on press, 0 on release)
             self._send_midi(self.QS.set_B_behaviour(i, 1))
 
@@ -279,12 +277,8 @@ class BeatStep_Q(ControlSurface):
     def _create_mix_mode(self):
         self._mix_mode = CMix(self)
         self._mix_mode.set_recall_button(self._recall_button)
-        # Physical pads 1-8  (top row)    = software buttons 9-16 (CC 36-43)
-        # Physical pads 9-16 (bottom row) = software buttons 1-8  (CC 44-51)
-        for i in range(8):
-            self._mix_mode.set_pad_button(i,     getattr(self, '_' + str(i + 9) + '_button'))
-            self._mix_mode.set_pad_button(i + 8, getattr(self, '_' + str(i + 1) + '_button'))
         for i in range(1, 17):
+            self._mix_mode.set_pad_button(i - 1, getattr(self, '_' + str(i) + '_button'))
             self._mix_mode.set_encoder_button(i - 1, getattr(self, '_' + str(i) + '_encoder'))
 
     def _create_Q_control(self):
