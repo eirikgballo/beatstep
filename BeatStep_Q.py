@@ -6,7 +6,6 @@ import Live
 from _Framework.ControlSurface import ControlSurface
 from _Framework.InputControlElement import MIDI_CC_TYPE, MIDI_NOTE_TYPE
 from _Framework.ButtonElement import ButtonElement
-from _Framework.EncoderElement import EncoderElement
 from _Framework import Task
 
 from .QSetup import QSetup
@@ -239,19 +238,8 @@ class BeatStep_Q(ControlSurface):
                     True, MIDI_CC_TYPE, CHANNEL, bmsgid, name="_" + str(i) + "_button"
                 ),
             )
-
-            emsgid = ENCODER_MSG_IDS[i - 1]
-            setattr(
-                self,
-                "_" + str(i) + "_encoder",
-                EncoderElement(
-                    MIDI_CC_TYPE,
-                    CHANNEL,
-                    emsgid,
-                    Live.MidiMap.MapMode.relative_smooth_two_compliment,
-                    name="_" + str(i) + "_encoder",
-                ),
-            )
+        # Encoders are handled directly in receive_midi — no EncoderElement
+        # registration so the framework MIDI map does not consume their CC messages.
 
         self._transpose_encoder = EncoderElement(
             MIDI_CC_TYPE,
