@@ -44,8 +44,11 @@ class BeatStep_Q(ControlSurface):
             # self._create_device()  # not used in new architecture
 
     def receive_midi(self, midi_bytes):
+    def receive_midi(self, midi_bytes):
+        # Broad diagnostic — log all 3-byte messages
         if len(midi_bytes) == 3:
             status, cc, value = midi_bytes
+            self.show_message("MIDI st={:#x} cc={} val={}".format(status, cc, value))
             if (status & 0xF0) == 0xB0:
                 if cc in ENCODER_MSG_IDS:
                     encoder_index = ENCODER_MSG_IDS.index(cc)
