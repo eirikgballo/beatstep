@@ -104,9 +104,9 @@ class CMix:
     # ── Event handlers ─────────────────────────────────────────────────────
 
     def _on_recall(self, value):
-        # Mix mode stays active; refresh LEDs to confirm.
-        if value > 0:
-            self._update_leds()
+        # Refresh on both press and release — hardware resets the LED on release,
+        # so we must re-assert the red state immediately after.
+        self._update_leds()
 
     def _on_pad(self, pad_index, value):
         if value == 0:
