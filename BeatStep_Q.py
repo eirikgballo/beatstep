@@ -168,7 +168,9 @@ class BeatStep_Q(ControlSurface):
             self._send_midi(self.QS.set_B_mode(i, 8))
             # set pad channel
             self._send_midi(self.QS.set_B_channel(i, CHANNEL))
-            # set pad behaviour to toggle
+            # explicitly set the CC ID so it matches the ButtonElement definition
+            self._send_midi(self.QS.set_B_cc(i, PAD_MSG_IDS[i - 1]))
+            # set pad behaviour to gate (127 on press, 0 on release)
             self._send_midi(self.QS.set_B_behaviour(i, 1))
 
             # set encoder channel

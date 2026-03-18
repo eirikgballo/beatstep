@@ -104,11 +104,13 @@ class CMix:
     # ── Event handlers ─────────────────────────────────────────────────────
 
     def _on_recall(self, value):
-        # The BeatStep hardware physically recalls its stored preset whenever the
-        # recall button fires, resetting pad modes and LED colours. Re-apply
-        # control mode immediately to restore CC mode on the pads, then repaint.
+        # Re-apply CC mode (hardware recall resets pad modes) then repaint.
+        # Schedule 1 tick later so our sysex fires after the hardware
+        # gate-release LED reset clears the button colour.
         self._parent._activate_control_mode()
-        self._update_leds()
+        self._parent.schedule_message(1, self._update_leds)
+        if value > 0:
+            self._parent.show_message("Mix Mode active")
 
     def _on_pad(self, pad_index, value):
         if value == 0:
@@ -116,8 +118,10 @@ class CMix:
         track_index = self._PAD_TO_TRACK[pad_index]
         tracks = list(self._parent.song().tracks)
         if track_index >= len(tracks):
+            self._parent.show_message("Mix: no track at pad {}".format(pad_index + 1))
             return
         track = tracks[track_index]
+        self._parent.show_message("Mix: pad {} -> {}".format(pad_index + 1, track.name))
 
         now = time.time()
         if (self._last_tapped_pad == pad_index
@@ -136,6 +140,7 @@ class CMix:
             return
         device = self._get_rack_device(track)
         if device is None:
+            self._parent.show_message("Mix: no rack device on '{}'".format(track.name))
             return
         params = device.parameters
         # parameters[0] is "Device On"; macros start at index 1.
