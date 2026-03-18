@@ -91,7 +91,6 @@ class BeatStep_Q(ControlSurface):
         self.schedule_message(60, self._mix_mode._update_leds)
 
     def _setup_hardware(self):
-        self._init_color_sequence()
         self._setup_control_buttons_and_encoders()
         self._setup_buttons_and_encoders()
 
@@ -100,8 +99,9 @@ class BeatStep_Q(ControlSurface):
         # set encoder acceleration to "slow" on startup
         self._send_midi(self.QS.set_E_acceleration(0))
 
-        # Switch pads to CC mode so CMix button listeners receive events.
+        # Switch pads to CC mode after setup is done, then run startup animation.
         self._activate_control_mode()
+        self._init_color_sequence()
 
     def _setup_control_buttons_and_encoders(self):
         """
@@ -152,23 +152,23 @@ class BeatStep_Q(ControlSurface):
         self._send_midi(self.QS.set_E_cc("transpose", 4))
 
     def _setup_buttons_and_encoders(self):
-        # for all buttons and encoders
+        # Stagger every sysex message by 1 tick — sending them all at once
+        # causes the hardware to silently drop most of them.
+        tick = 1
         for i in range(1, 17):
-            # set pad to note-mode
-            self._send_midi(self.QS.set_B_mode(i, 9))
-            # set pad channel
-            self._send_midi(self.QS.set_B_channel(i, CHANNEL))
-            # set pad behaviour to toggle
-            self._send_midi(self.QS.set_B_behaviour(i, 1))
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_B_mode(i, 9)));      tick += 1
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_B_channel(i, CHANNEL))); tick += 1
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_B_behaviour(i, 1))); tick += 1
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_E_channel(i, CHANNEL))); tick += 1
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_E_behaviour(i, 2))); tick += 1
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_E_mode(i, 1)));      tick += 1
+            self.schedule_message(tick, self._send_midi_callback(self.QS.set_E_cc(i, ENCODER_MSG_IDS[i - 1]))); tick += 1
+        self._setup_done_at_tick = tick
 
-            # set encoder channel
-            self._send_midi(self.QS.set_E_channel(i, CHANNEL))
-            # set all encoders to relative-mode 2
-            self._send_midi(self.QS.set_E_behaviour(i, 2))
-            # set all encoders to midi cc mode
-            self._send_midi(self.QS.set_E_mode(i, 1))
-            # set midi cc id's for all encoders
-            self._send_midi(self.QS.set_E_cc(i, ENCODER_MSG_IDS[i - 1]))
+    def _send_midi_callback(self, msg):
+        def f():
+            self._send_midi(msg)
+        return f
 
     def _do_activate_control_mode(self):
         # for all buttons
