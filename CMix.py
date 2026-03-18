@@ -35,15 +35,13 @@ class CMix:
     def __init__(self, parent):
         self._parent = parent
         self._pad_buttons = [None] * 16
-        self._encoder_buttons = [None] * 16
         self._cntrl_button = None
 
         self._last_tap_time = [-99.0] * 16
         self._last_tapped_pad = -1
 
-        # Stable callables (created once so add/remove_value_listener work correctly).
+        # Stable callables for pads only.
         self._pad_listeners = [self._make_pad_listener(i) for i in range(16)]
-        self._encoder_listeners = [self._make_encoder_listener(i) for i in range(16)]
 
         song = self._parent.song()
         song.view.add_selected_track_listener(self._on_state_changed)
@@ -65,19 +63,6 @@ class CMix:
             button.add_value_listener(listener)
         self._pad_buttons[pad_index] = button
 
-    def set_encoder_button(self, encoder_index, button):
-        """Wire an EncoderElement to encoder_index (0-15)."""
-        old = self._encoder_buttons[encoder_index]
-        listener = self._encoder_listeners[encoder_index]
-        if old is not None:
-            try:
-                old.remove_value_listener(listener)
-            except Exception:
-                pass
-        if button is not None:
-            button.add_value_listener(listener)
-        self._encoder_buttons[encoder_index] = button
-
     def set_recall_button(self, button):
         """Wire the recall ButtonElement."""
         if self._cntrl_button is not None:
@@ -94,11 +79,6 @@ class CMix:
     def _make_pad_listener(self, pad_index):
         def listener(value):
             self._on_pad(pad_index, value)
-        return listener
-
-    def _make_encoder_listener(self, encoder_index):
-        def listener(value):
-            self._on_encoder(encoder_index, value)
         return listener
 
     # ── Event handlers ─────────────────────────────────────────────────────
@@ -138,40 +118,32 @@ class CMix:
         self._last_tapped_pad = pad_index
         self._update_leds()
 
-    def _on_encoder(self, encoder_index, value):
+    def handle_encoder(self, encoder_index, raw_value):
+        """Called directly from receive_midi with the raw MIDI CC value."""
         track = self._parent.song().view.selected_track
         if track is None:
             return
         device = self._get_rack_device(track)
         if device is None:
             self._parent.show_message(
-                "Mix enc{}: no rack on '{}' (devices: {})".format(
-                    encoder_index + 1, track.name,
-                    [d.name for d in track.devices]))
+                "Mix enc{}: no rack on '{}'".format(encoder_index + 1, track.name))
             return
         params = device.parameters
         # parameters[0] is "Device On"; macros start at index 1.
         param_index = encoder_index + 1
         if param_index >= len(params):
-            self._parent.show_message(
-                "Mix enc{}: only {} params on {}".format(
-                    encoder_index + 1, len(params) - 1, device.name))
             return
         param = params[param_index]
         if not param.is_enabled or param.is_quantized:
             return
-
-        # Skip neutral values.
-        if value == 0 or value == 64:
-            return
-
-        # Arturia relative mode 2 = binary offset: 65-127 = CW, 1-63 = CCW
-        direction = 1 if value > 64 else -1
+        # Arturia relative mode 2 = two's complement:
+        # 1-63  = clockwise  (increase)
+        # 65-127 = counterclockwise (decrease)
+        direction = 1 if raw_value < 64 else -1
         step = (param.max - param.min) * self._ENCODER_STEP_FRACTION * direction
         param.value = max(param.min, min(param.max, param.value + step))
         self._parent.show_message(
-            "enc{} raw={} dir={} | {} = {:.2f}".format(
-                encoder_index + 1, value, direction, param.name, param.value))
+            "enc{} -> {} = {:.2f}".format(encoder_index + 1, param.name, param.value))
 
     def _on_state_changed(self):
         self._update_leds()

@@ -48,18 +48,12 @@ class BeatStep_Q(ControlSurface):
             # self._create_device()  # not used in new architecture
 
     def receive_midi(self, midi_bytes):
-        # Diagnostic: log CC messages so we can see which encoders/pads fire.
         if len(midi_bytes) == 3:
-            status = midi_bytes[0]
-            cc     = midi_bytes[1]
-            value  = midi_bytes[2]
-            if status == 0xB9:  # CC on channel 10 (0-indexed: 9)
-                if cc in ENCODER_MSG_IDS:
-                    enc_index = ENCODER_MSG_IDS.index(cc)
-                    self.show_message("MIDI CC enc#{} (cc={}) val={}".format(enc_index + 1, cc, value))
-                elif cc in PAD_MSG_IDS:
-                    pad_index = PAD_MSG_IDS.index(cc)
-                    self.show_message("MIDI CC pad#{} (cc={}) val={}".format(pad_index + 1, cc, value))
+            status, cc, value = midi_bytes
+            if status == 0xB9 and cc in ENCODER_MSG_IDS:  # CC on channel 10
+                encoder_index = ENCODER_MSG_IDS.index(cc)
+                self._mix_mode.handle_encoder(encoder_index, value)
+                return  # don't pass to framework
         super(BeatStep_Q, self).receive_midi(midi_bytes)
 
     def handle_sysex(self, midi_bytes):
@@ -290,7 +284,6 @@ class BeatStep_Q(ControlSurface):
         self._mix_mode.set_recall_button(self._recall_button)
         for i in range(1, 17):
             self._mix_mode.set_pad_button(i - 1, getattr(self, '_' + str(i) + '_button'))
-            self._mix_mode.set_encoder_button(i - 1, getattr(self, '_' + str(i) + '_encoder'))
 
     def _create_Q_control(self):
         # Kept for reference. Not used in new architecture.
