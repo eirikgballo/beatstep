@@ -34,14 +34,10 @@ class CMix:
 
     def __init__(self, parent):
         self._parent = parent
-        self._pad_buttons = [None] * 16
         self._cntrl_button = None
 
         self._last_tap_time = [-99.0] * 16
         self._last_tapped_pad = -1
-
-        # Stable callables for pads only.
-        self._pad_listeners = [self._make_pad_listener(i) for i in range(16)]
 
         song = self._parent.song()
         song.view.add_selected_track_listener(self._on_state_changed)
@@ -49,19 +45,6 @@ class CMix:
         song.add_visible_tracks_listener(self._on_state_changed)
 
     # ── Button wiring ──────────────────────────────────────────────────────
-
-    def set_pad_button(self, pad_index, button):
-        """Wire a pad ButtonElement to pad_index (0-15)."""
-        old = self._pad_buttons[pad_index]
-        listener = self._pad_listeners[pad_index]
-        if old is not None:
-            try:
-                old.remove_value_listener(listener)
-            except Exception:
-                pass
-        if button is not None:
-            button.add_value_listener(listener)
-        self._pad_buttons[pad_index] = button
 
     def set_recall_button(self, button):
         """Wire the recall ButtonElement."""
@@ -76,11 +59,6 @@ class CMix:
 
     # ── Listener factories ─────────────────────────────────────────────────
 
-    def _make_pad_listener(self, pad_index):
-        def listener(value):
-            self._on_pad(pad_index, value)
-        return listener
-
     # ── Event handlers ─────────────────────────────────────────────────────
 
     def _on_recall(self, value):
@@ -91,6 +69,10 @@ class CMix:
         self._parent.schedule_message(1, self._update_leds)
         if value > 0:
             self._parent.show_message("Mix Mode active")
+
+    def handle_pad(self, pad_index, value):
+        """Called directly from receive_midi with raw pad CC value."""
+        self._on_pad(pad_index, value)
 
     def _on_pad(self, pad_index, value):
         track_index = self._PAD_TO_TRACK[pad_index]

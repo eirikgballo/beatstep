@@ -47,10 +47,13 @@ class BeatStep_Q(ControlSurface):
         if len(midi_bytes) == 3:
             status, cc, value = midi_bytes
             if (status & 0xF0) == 0xB0:
-                self.show_message("CC ch={} cc={} val={}".format(status & 0x0F, cc, value))
                 if cc in ENCODER_MSG_IDS:
                     encoder_index = ENCODER_MSG_IDS.index(cc)
                     self._mix_mode.handle_encoder(encoder_index, value)
+                    return
+                if cc in PAD_MSG_IDS:
+                    pad_index = PAD_MSG_IDS.index(cc)
+                    self._mix_mode.handle_pad(pad_index, value)
                     return
         super(BeatStep_Q, self).receive_midi(midi_bytes)
 
@@ -208,7 +211,6 @@ class BeatStep_Q(ControlSurface):
         self._play_S_button = ButtonElement(
             True, MIDI_NOTE_TYPE, 0, 60, name="Play_Button"
         )
-
         self._stop_button = ButtonElement(
             True, MIDI_CC_TYPE, CHANNEL, 1, name="Stop_Button"
         )
@@ -227,18 +229,9 @@ class BeatStep_Q(ControlSurface):
         self._chan_button = ButtonElement(
             True, MIDI_CC_TYPE, CHANNEL, 8, name="chan_Button"
         )
-
-        for i in range(1, 17):
-            bmsgid = PAD_MSG_IDS[i - 1]
-            setattr(
-                self,
-                "_" + str(i) + "_button",
-                ButtonElement(
-                    True, MIDI_CC_TYPE, CHANNEL, bmsgid, name="_" + str(i) + "_button"
-                ),
-            )
-        # Encoders are handled directly in receive_midi — no EncoderElement
-        # registration so the framework MIDI map does not consume their CC messages.
+        # Pads and encoders are handled directly in receive_midi.
+        # Registering ButtonElements for them would prevent receive_midi from
+        # seeing their CC messages.
 
         self._transpose_encoder = EncoderElement(
             MIDI_CC_TYPE,
@@ -250,11 +243,7 @@ class BeatStep_Q(ControlSurface):
         # Note: _device_encoders removed — it duplicated encoder CC registrations
         # and caused the framework to route only half the encoders correctly.
 
-    def _create_mix_mode(self):
-        self._mix_mode = CMix(self)
-        self._mix_mode.set_recall_button(self._recall_button)
-        for i in range(1, 17):
-            self._mix_mode.set_pad_button(i - 1, getattr(self, '_' + str(i) + '_button'))
+    def _create_mix_mode(self):\n        self._mix_mode = CMix(self)\n        self._mix_mode.set_recall_button(self._recall_button)
 
     def _create_Q_control(self):
         # Kept for reference. Not used in new architecture.
