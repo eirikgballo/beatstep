@@ -46,11 +46,10 @@ class BeatStep_Q(ControlSurface):
     def receive_midi(self, midi_bytes):
         if len(midi_bytes) == 3:
             status, cc, value = midi_bytes
-            # Accept CC on any channel — hardware preset may have odd encoders on ch1
             if (status & 0xF0) == 0xB0:
+                self.show_message("CC ch={} cc={} val={}".format(status & 0x0F, cc, value))
                 if cc in ENCODER_MSG_IDS:
                     encoder_index = ENCODER_MSG_IDS.index(cc)
-                    self.show_message("RAW enc{} cc={} val={}".format(encoder_index + 1, cc, value))
                     self._mix_mode.handle_encoder(encoder_index, value)
                     return
         super(BeatStep_Q, self).receive_midi(midi_bytes)
