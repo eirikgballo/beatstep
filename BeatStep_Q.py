@@ -51,6 +51,7 @@ class BeatStep_Q(ControlSurface):
             if (status & 0xF0) == 0xB0:
                 if cc in ENCODER_MSG_IDS:
                     encoder_index = ENCODER_MSG_IDS.index(cc)
+                    self.show_message("RAW enc{} cc={} val={}".format(encoder_index + 1, cc, value))
                     self._mix_mode.handle_encoder(encoder_index, value)
                     return
         super(BeatStep_Q, self).receive_midi(midi_bytes)
