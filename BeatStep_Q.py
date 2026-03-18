@@ -48,7 +48,18 @@ class BeatStep_Q(ControlSurface):
             # self._create_device()  # not used in new architecture
 
     def receive_midi(self, midi_bytes):
-        # self.show_message(str(midi_bytes))
+        # Diagnostic: log CC messages so we can see which encoders/pads fire.
+        if len(midi_bytes) == 3:
+            status = midi_bytes[0]
+            cc     = midi_bytes[1]
+            value  = midi_bytes[2]
+            if status == 0xB9:  # CC on channel 10 (0-indexed: 9)
+                if cc in ENCODER_MSG_IDS:
+                    enc_index = ENCODER_MSG_IDS.index(cc)
+                    self.show_message("MIDI CC enc#{} (cc={}) val={}".format(enc_index + 1, cc, value))
+                elif cc in PAD_MSG_IDS:
+                    pad_index = PAD_MSG_IDS.index(cc)
+                    self.show_message("MIDI CC pad#{} (cc={}) val={}".format(pad_index + 1, cc, value))
         super(BeatStep_Q, self).receive_midi(midi_bytes)
 
     def handle_sysex(self, midi_bytes):

@@ -144,20 +144,34 @@ class CMix:
             return
         device = self._get_rack_device(track)
         if device is None:
-            self._parent.show_message("Mix: no rack device on '{}'".format(track.name))
+            self._parent.show_message(
+                "Mix enc{}: no rack on '{}' (devices: {})".format(
+                    encoder_index + 1, track.name,
+                    [d.name for d in track.devices]))
             return
         params = device.parameters
         # parameters[0] is "Device On"; macros start at index 1.
         param_index = encoder_index + 1
         if param_index >= len(params):
+            self._parent.show_message(
+                "Mix enc{}: only {} params on {}".format(
+                    encoder_index + 1, len(params) - 1, device.name))
             return
         param = params[param_index]
         if not param.is_enabled or param.is_quantized:
             return
-        # Relative smooth two's complement: < 65 = clockwise, > 65 = counterclockwise.
-        direction = 1 if value < 65 else -1
+
+        # Skip neutral values.
+        if value == 0 or value == 64:
+            return
+
+        # Arturia relative mode 2 = binary offset: 65-127 = CW, 1-63 = CCW
+        direction = 1 if value > 64 else -1
         step = (param.max - param.min) * self._ENCODER_STEP_FRACTION * direction
         param.value = max(param.min, min(param.max, param.value + step))
+        self._parent.show_message(
+            "enc{} raw={} dir={} | {} = {:.2f}".format(
+                encoder_index + 1, value, direction, param.name, param.value))
 
     def _on_state_changed(self):
         self._update_leds()
