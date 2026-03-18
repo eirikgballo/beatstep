@@ -4,13 +4,10 @@ import Live
 
 # from _Arturia.ArturiaControlSurface import ArturiaControlSurface
 from _Framework.ControlSurface import ControlSurface
-from _Framework.Layer import Layer
 from _Framework.InputControlElement import MIDI_CC_TYPE, MIDI_NOTE_TYPE
 from _Framework.ButtonElement import ButtonElement
 from _Framework.EncoderElement import EncoderElement
 from _Framework import Task
-from _Framework.ButtonMatrixElement import ButtonMatrixElement
-from _Framework.DeviceComponent import DeviceComponent
 
 from .QSetup import QSetup
 from .CMix import CMix
@@ -50,10 +47,12 @@ class BeatStep_Q(ControlSurface):
     def receive_midi(self, midi_bytes):
         if len(midi_bytes) == 3:
             status, cc, value = midi_bytes
-            if status == 0xB9 and cc in ENCODER_MSG_IDS:  # CC on channel 10
-                encoder_index = ENCODER_MSG_IDS.index(cc)
-                self._mix_mode.handle_encoder(encoder_index, value)
-                return  # don't pass to framework
+            # Accept CC on any channel — hardware preset may have odd encoders on ch1
+            if (status & 0xF0) == 0xB0:
+                if cc in ENCODER_MSG_IDS:
+                    encoder_index = ENCODER_MSG_IDS.index(cc)
+                    self._mix_mode.handle_encoder(encoder_index, value)
+                    return
         super(BeatStep_Q, self).receive_midi(midi_bytes)
 
     def handle_sysex(self, midi_bytes):
@@ -260,24 +259,8 @@ class BeatStep_Q(ControlSurface):
             Live.MidiMap.MapMode.relative_smooth_two_compliment,
             name="_transpose_encoder",
         )
-
-        self._device_encoders = ButtonMatrixElement(
-            rows=[
-                [
-                    EncoderElement(
-                        MIDI_CC_TYPE,
-                        CHANNEL,
-                        identifier,
-                        Live.MidiMap.MapMode.relative_smooth_two_compliment,
-                        name="Encoder_%d_%d" % (column_index, row_index),
-                    )
-                    for column_index, identifier in enumerate(row)
-                ]
-                for row_index, row in enumerate(
-                    (ENCODER_MSG_IDS[:4], ENCODER_MSG_IDS[8:12])
-                )
-            ]
-        )
+        # Note: _device_encoders removed — it duplicated encoder CC registrations
+        # and caused the framework to route only half the encoders correctly.
 
     def _create_mix_mode(self):
         self._mix_mode = CMix(self)
