@@ -6,8 +6,8 @@ class CMix:
     Mix Mode for BeatStep_Q.
 
     Pad layout (viewed from the player):
-      Top row    (pads 9-16, pad_index 8-15)  -> Ableton Tracks  1-8  (track_index 0-7)
-      Bottom row (pads 1-8,  pad_index 0-7)   -> Ableton Tracks  9-16 (track_index 8-15)
+      Top row    (pads 1-8,  pad_index 0-7)   -> Ableton Tracks  1-8  (track_index 0-7)
+      Bottom row (pads 9-16, pad_index 8-15)  -> Ableton Tracks  9-16 (track_index 8-15)
 
     Behaviour:
       Single tap  -> select that track in Ableton
@@ -24,10 +24,10 @@ class CMix:
     DOUBLE_TAP_TIME = 0.5  # seconds
 
     # Maps pad_index (0-15) -> track_index (0-15).
-    # pad_index 0-7  = bottom row (pads 1-8)  -> tracks 9-16 (indices 8-15)
-    # pad_index 8-15 = top row    (pads 9-16) -> tracks 1-8  (indices 0-7)
-    _PAD_TO_TRACK = [8, 9, 10, 11, 12, 13, 14, 15,
-                     0, 1,  2,  3,  4,  5,  6,  7]
+    # pad_index 0-7  = top row    (pads 1-8)  -> tracks 1-8  (indices 0-7)
+    # pad_index 8-15 = bottom row (pads 9-16) -> tracks 9-16 (indices 8-15)
+    _PAD_TO_TRACK = [0, 1, 2, 3, 4, 5, 6, 7,
+                     8, 9, 10, 11, 12, 13, 14, 15]
 
     # Encoder step as a fraction of the full parameter range per encoder click.
     _ENCODER_STEP_FRACTION = 0.01
@@ -113,10 +113,14 @@ class CMix:
             self._parent.show_message("Mix Mode active")
 
     def _on_pad(self, pad_index, value):
-        if value == 0:
-            return
         track_index = self._PAD_TO_TRACK[pad_index]
         tracks = list(self._parent.song().tracks)
+
+        if value == 0:
+            # Hardware resets the LED on gate-release — repaint 1 tick later.
+            self._parent.schedule_message(1, self._update_leds)
+            return
+
         if track_index >= len(tracks):
             self._parent.show_message("Mix: no track at pad {}".format(pad_index + 1))
             return
@@ -181,13 +185,8 @@ class CMix:
 
     @staticmethod
     def _track_to_button_id(track_index):
-        """
-        track_index 0-7  -> button ID 9-16  (top row)
-        track_index 8-15 -> button ID 1-8   (bottom row)
-        """
-        if track_index < 8:
-            return track_index + 9
-        return track_index - 7  # equivalent to (track_index - 8) + 1
+        # track_index 0-15 -> button ID 1-16 (direct)
+        return track_index + 1
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
