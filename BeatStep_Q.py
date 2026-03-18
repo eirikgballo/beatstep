@@ -73,11 +73,21 @@ class BeatStep_Q(ControlSurface):
         return f
 
     def _init_color_sequence(self):
-        for i in range(1, 9):
-            self.schedule_message(i, self._B_color_callback(i, 1))
-            self.schedule_message(17 - i, self._B_color_callback(i, 16))
-        for i in range(1, 17):
-            self.schedule_message(20, self._B_color_callback(i, 0))
+        # Custom CMix startup animation: pads 1-8 blink red 3 times.
+        # Each blink = on at tick T, off at tick T+3.  Three blinks spaced 8 ticks apart.
+        # After the animation (tick ~30), paint the normal Mix Mode LEDs.
+        BLINK_PADS = range(1, 9)
+        for blink in range(3):
+            on_tick  = 2 + blink * 8
+            off_tick = on_tick + 3
+            for pad in BLINK_PADS:
+                self.schedule_message(on_tick,  self._B_color_callback(pad, 1))   # red
+                self.schedule_message(off_tick, self._B_color_callback(pad, 0))   # black
+        # Turn everything else off during the animation
+        for pad in range(9, 17):
+            self.schedule_message(2, self._B_color_callback(pad, 0))
+        # Paint normal Mix Mode LEDs after animation finishes
+        self.schedule_message(30, self._mix_mode._update_leds)
 
     def _setup_hardware(self):
         self._init_color_sequence()
@@ -91,8 +101,6 @@ class BeatStep_Q(ControlSurface):
 
         # Switch pads to CC mode so CMix button listeners receive events.
         self._activate_control_mode()
-        # Delay LED paint until after the init colour animation completes (tick 20).
-        self.schedule_message(25, self._mix_mode._update_leds)
 
     def _setup_control_buttons_and_encoders(self):
         """
