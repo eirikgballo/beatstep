@@ -81,7 +81,7 @@ The script reads these raw values directly in `receive_midi` and converts them t
 | `shift` + `recall` | Advance to the next track page (+15 regular tracks). From the last page, wraps back to page 1. |
 | `play` | No function (reserved). |
 | `stop` | No function (reserved). |
-| `shift` | Modifier key (no standalone function). Used for `shift`+`recall` page advance. `shift`+pad is ignored. |
+| `shift` | Modifier key (no standalone function). Used for `shift`+`recall` page advance. `shift`+pad is reserved for future use. |
 | `chan` | Reserved for future mode. |
 | `store` | Reserved for future mode. |
 | `cntrl` | Reserved for future mode. |
@@ -183,7 +183,7 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 - If rack has fewer than N macros → status bar: `"Nothing assigned to macro N"`
 - Otherwise → adjust `device.parameters[N]` by the encoder delta (`parameters[0]` is Device On; macros are at indices 1–16, so encoder N maps to `parameters[N]`)
 
-**Encoder sensitivity**: One click (raw delta = 1) moves the parameter by `(1 / ENCODER_CLICKS_PER_ROTATION) * ENCODER_SENSITIVITY`. The goal is that one full 360° rotation covers the full parameter range (0.0–1.0). `ENCODER_CLICKS_PER_ROTATION` defaults to `24` (placeholder — calibrate against real hardware). `ENCODER_SENSITIVITY` defaults to `1.0` and acts as a multiplier for fine-tuning — increase it to make encoders faster, decrease to make them slower. Both constants are defined in one place so sensitivity can be adjusted without touching logic code. The transpose encoder (volume) uses the same two constants.
+**Encoder sensitivity**: One click (raw delta = 1) moves the parameter by `(1 / ENCODER_CLICKS_PER_ROTATION) * ENCODER_SENSITIVITY`. The goal is that one full 360° rotation covers the full parameter range (0.0–1.0). `ENCODER_CLICKS_PER_ROTATION` defaults to `24` (placeholder — calibrate against real hardware after deployment). `ENCODER_SENSITIVITY` defaults to `1.0` and acts as a multiplier for fine-tuning — increase it to make encoders faster, decrease to make them slower. Both constants are defined in one place so sensitivity can be adjusted without touching logic code. The transpose encoder (volume) uses the same two constants.
 
 **Transpose encoder → volume**: Always acts on `Song.view.selected_track.mixer_device.volume`. No mode dependency.
 
@@ -199,6 +199,6 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 
 **Feature scope**: Mix Mode only. `play`, `stop`, `chan`, `store`, `cntrl` have no function in the current implementation.
 
-**Function button CC IDs**: The CC IDs for `play`, `stop`, `recall`, `shift`, `chan`, `store`, `cntrl` are **not yet confirmed**. They must be sourced from the BeatStep MIDI implementation documentation or from the reference implementation (raphaelquast/beatstep). Unlike pads and encoders, function buttons may not be remappable via sysex — their CC IDs may be fixed in hardware. This must be verified before implementation.
+**Function button CC IDs**: It is **not confirmed** that function buttons (`play`, `stop`, `recall`, `shift`, `chan`, `store`, `cntrl`) send CC messages at all. They may use a different MIDI message type. This must be investigated against the BeatStep MIDI implementation documentation or the reference implementation (raphaelquast/beatstep) before implementation.
 
 **Parameter value clamping**: When adjusting a parameter value via encoder delta, clamp the result to `[0.0, 1.0]` before assigning: `param.value = max(0.0, min(1.0, param.value + delta))`.
