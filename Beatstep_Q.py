@@ -1,5 +1,5 @@
 """
-BeatStep_Q — MIDI Remote Script for the Arturia BeatStep.
+Beatstep_Q — MIDI Remote Script for the Arturia BeatStep.
 
 Boots directly into Mix Mode (CMix).  Hardware is configured via sysex on
 every connection so controller state is always deterministic.
@@ -49,31 +49,35 @@ _ENCODER_CC_TO_INDEX = {cc: i for i, cc in enumerate(ENCODER_MSG_IDS)}
 # ControlSurface
 # ---------------------------------------------------------------------------
 
-class BeatStep_Q(ControlSurface):
+class Beatstep_Q(ControlSurface):
 
     def __init__(self, c_instance):
         ControlSurface.__init__(self, c_instance)
+        self.log_message('BeatStep_Q: __init__ start')
         self._cmix = None
-        with self.component_guard():
+        try:
             self._cmix = CMix(
                 song         = self.song(),
                 send_led     = self._send_led,
                 show_message = self.show_message,
             )
-        # Schedule hardware setup immediately on load.
-        # port_settings_changed handles reconnects but is NOT called on first boot.
+            self.log_message('BeatStep_Q: CMix created OK')
+        except Exception as e:
+            self.log_message('BeatStep_Q: ERROR creating CMix: %s' % str(e))
         self._schedule_hardware_setup()
+        self.log_message('BeatStep_Q: __init__ done')
 
     # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
 
     def port_settings_changed(self):
-        """Called when MIDI ports change after initial load."""
+        self.log_message('BeatStep_Q: port_settings_changed')
         ControlSurface.port_settings_changed(self)
         self._schedule_hardware_setup()
 
     def disconnect(self):
+        self.log_message('BeatStep_Q: disconnect')
         if self._cmix:
             self._cmix.cleanup()
         self._clear_leds()
@@ -84,29 +88,34 @@ class BeatStep_Q(ControlSurface):
     # ------------------------------------------------------------------
 
     def _schedule_hardware_setup(self):
-        """Queue hardware setup with a 2.1 s delay (BeatStep needs time to settle)."""
+        self.log_message('BeatStep_Q: scheduling hardware setup')
         self._task_group.add(
             Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
         )
 
     def _setup_hardware(self):
-        # Configure all 16 pads: channel, CC mode, CC number
-        for i, cc in enumerate(PAD_MSG_IDS):
-            for msg in QSetup.setup_pad(i, cc):
+        self.log_message('BeatStep_Q: _setup_hardware running')
+        try:
+            for i, cc in enumerate(PAD_MSG_IDS):
+                for msg in QSetup.setup_pad(i, cc):
+                    self._send_midi(msg)
+
+            for i, cc in enumerate(ENCODER_MSG_IDS):
+                for msg in QSetup.setup_encoder(i, cc):
+                    self._send_midi(msg)
+
+            for msg in QSetup.setup_transpose_encoder(TRANSPOSE_ENCODER_CC):
                 self._send_midi(msg)
 
-        # Configure all 16 encoders: channel, relative mode 2, CC number
-        for i, cc in enumerate(ENCODER_MSG_IDS):
-            for msg in QSetup.setup_encoder(i, cc):
-                self._send_midi(msg)
+            self.log_message('BeatStep_Q: sysex sent OK')
 
-        # Configure transpose encoder
-        for msg in QSetup.setup_transpose_encoder(TRANSPOSE_ENCODER_CC):
-            self._send_midi(msg)
-
-        # Paint LEDs
-        if self._cmix:
-            self._cmix.update_leds()
+            if self._cmix:
+                self._cmix.update_leds()
+                self.log_message('BeatStep_Q: LEDs painted')
+            else:
+                self.log_message('BeatStep_Q: _cmix is None, skipping LEDs')
+        except Exception as e:
+            self.log_message('BeatStep_Q: ERROR in _setup_hardware: %s' % str(e))
 
     # ------------------------------------------------------------------
     # MIDI receive
