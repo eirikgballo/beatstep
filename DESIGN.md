@@ -12,7 +12,8 @@ are consistent from the start.
 > *What prompted the rewrite? What problems in the current code do you want to solve?*
 
 - [ ] I want to use the BS controller in a very certain way. There are many of the features in this repo I do not need, but I figured it would be good to have as reference.
-- [ ] MODE: Firstly, i would like to make a "mix mode". I want to enter the mix mode by pushing the CONTROL button (when the "mix mode" is active, the control button should light up red.)
+- The original repo [raphaelquast/beatstep](https://github.com/raphaelquast/beatstep) (docs at https://raphaelquast.github.io/beatstep/) is a useful reference for patterns around sysex scheduling, hardware setup, and general MIDI Remote Script structure for the BeatStep. The functionality here is deliberately narrower.
+- [ ] MODE: Firstly, i would like to make a "mix mode". The script boots directly into Mix Mode. The RECALL button should be continuously lit **blue** to signal that Mix Mode is active.
 - [ ] MIX MODE PAD FUNCTIONS: I want to use the pads to select track. I want TO use the pads "in reverse". By this i mean that i want the top left pad to be tied to TRACK 1 in Ableton. Then the top row should be tracks 1-8, and the lower row should be tracks 9-16. When a pad is selected it the light should be RED. If possible it would be nice to double tap a pad to SOLO the associated track in ableton
 - [ ] ENCODER FUNCTIONS: the encoders should control the 16 macros of the audio effect rack on the associated track.
 
@@ -24,10 +25,14 @@ The Arturia BeatStep has the following physical controls:
 
 | Group              | Controls                                      | Current MIDI mapping            |
 |--------------------|-----------------------------------------------|---------------------------------|
-| Pads (16)          | Pad 1–8 (bottom row), Pad 9–16 (top row)      | Note, CH10, IDs from PAD_MSG_IDS |
+| Pads (16)          | Pad 1–8 (top row), Pad 9–16 (bottom row)      | CC, CH10, IDs from PAD_MSG_IDS |
 | Encoders (16)      | Encoder 1–16                                  | CC, CH10, IDs from ENCODER_MSG_IDS |
 | Transpose encoder  | Single rotary at top-left                     | CC 4, CH10, relative mode 2     |
 | Function buttons   | `play`, `stop`, `cntrl`, `shift`, `chan`, `store`, `recall` | CC, CH10 |
+
+> **Note on pad numbering:** In this script "Pad 1–8" always refers to the **top row** of physical pads. The bottom row is "Pad 9–16". Within this codebase, top row = indices 0–7, bottom row = indices 8–15.
+>
+> The CC IDs in `PAD_MSG_IDS` (44–51 for the top row, 36–43 for the bottom row) are **explicitly programmed into the hardware** by `_setup_hardware` via `set_B_cc` sysex on every connection — the same way encoder CC IDs are set. Any prior hardware configuration (e.g. from Arturia MIDI Control Center) is overwritten. So `PAD_MSG_IDS` is the authoritative source, not an assumption about factory defaults.
 
 ### Pad LED colors (sysex, via QSetup)
 
@@ -73,7 +78,7 @@ layers are on, but the logic is spread across `_update_button_light_status()` in
 
 | Mode / Layer | Enter | Exit | Exclusive? | Description |
 |--------------|-------|------|------------|-------------|
-| Mix          | Press `cntrl` | — (no exit for now; always active) | N/A (only mode) | Track select, solo, macro control |
+| Mix          | Active on boot; pressing `recall` repaints LEDs | — (always active; no exit) | N/A (only mode) | Track select, solo, macro control |
 
 ---
 
@@ -88,15 +93,16 @@ layers are on, but the logic is spread across `_update_button_light_status()` in
 |----------------|--------|
 | Pad top-left → top-right (row 1) | Select Track 1–8. LED: red if selected, blue if track exists, black if no track |
 | Pad bottom-left → bottom-right (row 2) | Select Track 9–16. Same LED rules. |
-| Double-tap pad | Solo the associated track |
-| Encoders 1–16  | Control macro 1–16 of the Audio Effect Rack on the **currently selected track** |
-| `cntrl`        | Enters Mix Mode (lights red). No exit for now. |
+| Double-tap pad | Toggle solo on the associated track (additive — multiple tracks can be soloed simultaneously). Double-tapping again turns solo off. Does **not** change track selection. |
+| Single-tap pad | Select the track (exclusive — only one pad is red at a time). Pressing pad 5 when pad 3 is red turns pad 5 red and pad 3 returns to blue or magenta depending on its solo state. |
+| Encoders 1–16  | Control macro 1–16 of the Audio Effect Rack on the **currently selected track**. If the track has no rack, show "No rack on track" in the status bar. |
+| `recall`       | Mix Mode indicator — lit **blue** continuously. Script boots into Mix Mode. Pressing `recall` repaints all LEDs. No exit. |
 | `play`         | … (TBD) |
 | `stop`         | … (TBD) |
 | `shift`        | … (TBD) |
-| `chan`          | … (reserved for future mode) |
+| `chan`         | … (reserved for future mode) |
 | `store`        | … (reserved for future mode) |
-| `recall`       | … (reserved for future mode) |
+| `cntrl`        | … (reserved for future mode) |
 
 > *Add a table for every additional mode when they are designed.*
 
@@ -109,13 +115,13 @@ layers are on, but the logic is spread across `_update_button_light_status()` in
 
 Proposed semantic color vocabulary:
 
-| Semantic meaning                        | Color   | Notes |
-|-----------------------------------------|---------|-------|
-| No track exists at this pad position    | black   |       |
-| Track exists, not selected              | blue    |       |
-| Track selected (currently active track) | red     |       |
-| Mix Mode active (`cntrl` button)        | red     |       |
-| Reserved for future use                 | magenta |       |
+| Semantic meaning                                          | Color   | Notes |
+|-----------------------------------------------------------|---------|-------|
+| No track exists at this pad position                      | black   |       |
+| Track exists, not selected, not soloed                    | blue    | All existing tracks default to blue |
+| Track soloed but not currently selected                   | magenta |       |
+| Track currently selected (exclusive — only one at a time) | red     | Selected takes priority over soloed: a track that is both selected and soloed shows red |
+| Mix Mode indicator (`recall` button)                      | blue    |       |
 
 > *Extend or change this as needed. The goal is one place that defines what colors mean.*
 
@@ -136,29 +142,11 @@ BeatStep_Q          — ControlSurface subclass; hardware setup, sysex schedulin
 
 ### 6b. New component structure
 
-> *How would you like to split the responsibilities?
-> Smaller focused components are easier to test and reason about.
-> Some options:*
->
-> - Extract `MixComponent`, `SessionComponent`, `SequencerComponent`, `BrowserComponent`
->   as proper sibling components rather than nested objects inside QControlComponent.
-> - Keep a thin `LayerManager` or `ModeManager` that handles transitions and LED updates,
->   rather than booleans scattered across QControlComponent.
-> - Consider whether BaseComponent should use `_Framework.CompoundComponent` instead of
->   rolling its own setter plumbing.
-
 ```
-BeatStep_Q          — (same role)
-  QSetup            — (same role, unchanged)
-  ModeManager       — owns the current active mode(s); drives LED updates on transitions
-  MixComponent      — track arm / mute / solo / volume
-  SessionComponent  — clip launch, scene navigation
-  SequencerComponent— step sequencer
-  BrowserComponent  — library browser
-  BaseComponent     — (keep, extend, or replace with _Framework equivalent)
+BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI routing
+  QSetup    — Sysex message builders (no state; pure utility)
+  CMix      — Mix Mode: track selection, solo, encoder→macro control, LED management
 ```
-
-> *Sketch your preferred structure here.*
 
 ---
 
@@ -169,13 +157,12 @@ BeatStep_Q          — (same role)
 
 | Live object / event                              | Used for                          | Live version |
 |--------------------------------------------------|-----------------------------------|--------------|
-| `Live.Song.Song`                                 | Transport, tracks, scenes         | 9+           |
-| `Song.view.selected_track` / listener            | Track selection feedback          | 9+           |
-| `Song.clip_trigger_quantization` / listener      | Quantization display              | 9+           |
-| `Live.Browser`                                   | Library browsing                  | 9+           |
-| `_Framework.DeviceComponent`                     | Encoder → device parameter        | 9+           |
-| `_Framework.ClipSlotComponent`                   | (if you adopt framework components)| 9+          |
-| …                                                | …                                 | …            |
+| `Live.Song.Song`                                              | Track list, song object                     | 9+ |
+| `Song.view.selected_track` / `add_selected_track_listener`    | Track selection read and LED feedback       | 9+ |
+| `Song.tracks` / `add_tracks_listener`                         | React to tracks being added or removed      | 9+ |
+| `Song.visible_tracks` / `add_visible_tracks_listener`         | React to track visibility changes           | 9+ |
+| `track.solo`                                                  | Solo state read and write                   | 9+ |
+| `device.parameters`                                           | Encoder → macro parameter value control     | 9+ |
 
 ---
 
@@ -183,21 +170,17 @@ BeatStep_Q          — (same role)
 
 > *Things you haven't decided yet. Use this as a parking lot.*
 
-- [ ] Target Live versions: 10 only? 11+? Keep the `sys.version_info` guard for QSequencer?
-- [ ] Should the script save/restore hardware config via sysex on connect/disconnect (current approach), or configure hardware on every startup?
-- [ ] How to handle the 2-second hardware setup delay — keep `Task.sequence` / `Task.wait`, or find a cleaner pattern?
+- [x] ~~Target Live versions~~ → **Ableton Live 11**, with the **"value scaling"** setting enabled in Live's MIDI Preferences (this affects how CC values from relative encoders are interpreted by Live's internal parameter mapping; our script reads raw CC values directly in `receive_midi` so it is not affected, but it is relevant context).
+- [x] ~~Keep the `sys.version_info` guard for QSequencer?~~ → N/A — QSequencer has been removed from the codebase.
+- [x] ~~Save/restore vs configure on startup~~ → Configure on **every startup** via `_setup_hardware` (called from `port_settings_changed`). Keeps controller state deterministic and foolproof.
+- [x] ~~Hardware setup delay~~ → Keep current approach: `Task.sequence(Task.wait(2.1), Task.run(_setup_hardware))`. The BeatStep requires ~2 seconds after connection before reliably accepting sysex.
 - [x] ~~Any new features beyond what's listed in the current README?~~ → Scope is Mix Mode only for now; other modes (chan, store, recall) reserved for future.
 - [x] ~~Encoder → track mapping~~ → Encoders always follow the **currently selected track** (the last tapped pad).
 - [x] ~~Mix Mode exit~~ → No exit for now; Mix Mode is always active once entered.
-- [x] ~~Fewer than 16 tracks~~ → Existing tracks light blue, selected track lights red, empty pad positions are black.
+- [x] ~~Fewer than 16 tracks~~ → Existing tracks: blue (not selected), red (selected and not soloed), magenta (soloed). Empty pad positions: black.
 
 ---
 
 ## 9. Migration / Refactoring Plan
 
-> *Once the design is settled, break the work into safe, testable steps.
-> Each step should leave the script in a working state.*
-
-1. …
-2. …
-3. …
+Not applicable at current scope — the codebase has been rewritten from scratch. The active implementation is in `BeatStep_Q.py` and `CMix.py`.

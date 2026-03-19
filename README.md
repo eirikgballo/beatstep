@@ -1,6 +1,10 @@
-# Beatstep_Q
-**Beatstep_Q** is a **MIDI Remote Script** for **Ableton Live 9, 10 & 11** and the **Arturia BeatStep** controller.  
-It turns your BeatStep into a fully-fledged control-surface for Ableton Live !
+# Beatstep_Q (personal fork)
+
+This is a personal fork of [raphaelquast/beatstep](https://github.com/raphaelquast/beatstep), reimplemented to fit a specific workflow rather than the full feature set of the original.
+
+See [DESIGN.md](DESIGN.md) for the intended design and implementation plan.
+
+The original repository remains a useful reference for how to structure Ableton MIDI Remote Scripts for the BeatStep — it is not the goal to replicate its functionality here.
 
 - there are 6 different layers that give you a lot of control over Ableton Live:  
   - play midi instruments with access to the **full range** of midi-notes!
@@ -11,9 +15,6 @@ It turns your BeatStep into a fully-fledged control-surface for Ableton Live !
      - change properties of one or more notes simultaneously via the "multi-touch" editing mode
   - get indications on the status of clips, tracks, playback-state and MIDI notes via button-LED's
   - ... and much more!
-
-### Comments / suggestions / bugs?  
-> Just drop an [Issue](https://github.com/raphaelquast/beatstep/issues) or start a [Discussion](https://github.com/raphaelquast/beatstep/discussions) and I'll see what I can do!  
   
 
 ... and as you might imagine...  
