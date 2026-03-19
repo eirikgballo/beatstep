@@ -75,13 +75,11 @@ class BeatStep_Q(ControlSurface):
     def port_settings_changed(self):
         """Called when MIDI ports connect or disconnect."""
         ControlSurface.port_settings_changed(self)
-        if self._ports_are_active():
-            # Delay hardware setup ~2 s; BeatStep needs time after connection.
-            self._tasks.add(
-                Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
-            )
-        else:
-            self._clear_leds()
+        # Always schedule; _send_midi is a no-op when not connected.
+        # The 2.1 s delay lets the BeatStep settle after connection.
+        self._task_group.add(
+            Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
+        )
 
     def disconnect(self):
         if self._cmix:
@@ -171,13 +169,3 @@ class BeatStep_Q(ControlSurface):
             self._send_midi(QSetup.set_led(i, QSetup.OFF))
         self._send_midi(QSetup.set_led(QSetup.RECALL_LED_INDEX, QSetup.OFF))
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _ports_are_active(self):
-        """Return True if both input and output ports are available."""
-        return (
-            self._input_midi_port  is not None and
-            self._output_midi_port is not None
-        )
