@@ -20,12 +20,14 @@ from .CMix import CMix
 # All pad / encoder / transpose traffic arrives on MIDI channel 10 (index 9).
 _STATUS_CC_CH10 = 0xB9  # 0xB0 | 9
 
-# Function buttons arrive on MIDI channel 1 (index 0).
-# TODO: confirm channel and CC values against hardware / MIDI monitor.
+# Function buttons — channel and CC values need hardware verification.
+# TODO: confirm with a MIDI monitor (may be CH1 or a different channel).
 _STATUS_CC_CH1 = 0xB0
+BTN_SHIFT_CC  = 49
+BTN_RECALL_CC = 5
 
 # CC IDs programmed into the hardware via sysex.
-# Top row = pads 0-7, bottom row = pads 8-15 (index into these lists).
+# Top row = pads 0-7, bottom row = pads 8-15.
 PAD_MSG_IDS = [
     44, 45, 46, 47, 48, 49, 50, 51,   # top row   (pads 1-8  / index 0-7)
     36, 37, 38, 39, 40, 41, 42, 43,   # bottom row (pads 9-16 / index 8-15)
@@ -36,16 +38,7 @@ ENCODER_MSG_IDS = [
     18, 19, 20, 21, 22, 23, 24, 25,
 ]
 
-TRANSPOSE_ENCODER_CC = 4  # CC 4, CH10, relative mode 2
-
-# Function button CC IDs on CH1.
-# TODO: verify all values against hardware using a MIDI monitor.
-# The BeatStep may also send these on a different channel depending on firmware
-# version and MIDI Control Center settings.
-BTN_SHIFT_CC  = 49   # TODO: verify
-BTN_RECALL_CC = 5    # TODO: verify
-BTN_PLAY_CC   = 70   # reserved (no function); TODO: verify or may be MMC
-BTN_STOP_CC   = 71   # reserved (no function); TODO: verify or may be MMC
+TRANSPOSE_ENCODER_CC = 4
 
 # Reverse-lookup maps built once at import time for O(1) dispatch.
 _PAD_CC_TO_INDEX     = {cc: i for i, cc in enumerate(PAD_MSG_IDS)}
@@ -67,19 +60,18 @@ class BeatStep_Q(ControlSurface):
                 send_led     = self._send_led,
                 show_message = self.show_message,
             )
+        # Schedule hardware setup immediately on load.
+        # port_settings_changed handles reconnects but is NOT called on first boot.
+        self._schedule_hardware_setup()
 
     # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
 
     def port_settings_changed(self):
-        """Called when MIDI ports connect or disconnect."""
+        """Called when MIDI ports change after initial load."""
         ControlSurface.port_settings_changed(self)
-        # Always schedule; _send_midi is a no-op when not connected.
-        # The 2.1 s delay lets the BeatStep settle after connection.
-        self._task_group.add(
-            Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
-        )
+        self._schedule_hardware_setup()
 
     def disconnect(self):
         if self._cmix:
@@ -88,29 +80,31 @@ class BeatStep_Q(ControlSurface):
         ControlSurface.disconnect(self)
 
     # ------------------------------------------------------------------
-    # Hardware setup (called after connection delay)
+    # Hardware setup
     # ------------------------------------------------------------------
 
-    def _setup_hardware(self):
-        # Program pad CC numbers
-        for i, cc in enumerate(PAD_MSG_IDS):
-            self._send_midi(QSetup.set_pad_cc(i, cc))
-
-        # Program encoder CC numbers
-        for i, cc in enumerate(ENCODER_MSG_IDS):
-            self._send_midi(QSetup.set_encoder_cc(i, cc))
-
-        # Set all 16 encoders to relative mode 2
-        for i in range(16):
-            hw_index = i + 16  # encoders start at hardware index 16
-            self._send_midi(QSetup.set_encoder_relative_mode(hw_index))
-
-        # Set transpose encoder to relative mode 2
-        self._send_midi(
-            QSetup.set_encoder_relative_mode(QSetup.TRANSPOSE_ENC_HW_INDEX)
+    def _schedule_hardware_setup(self):
+        """Queue hardware setup with a 2.1 s delay (BeatStep needs time to settle)."""
+        self._task_group.add(
+            Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
         )
 
-        # Paint initial LEDs
+    def _setup_hardware(self):
+        # Configure all 16 pads: channel, CC mode, CC number
+        for i, cc in enumerate(PAD_MSG_IDS):
+            for msg in QSetup.setup_pad(i, cc):
+                self._send_midi(msg)
+
+        # Configure all 16 encoders: channel, relative mode 2, CC number
+        for i, cc in enumerate(ENCODER_MSG_IDS):
+            for msg in QSetup.setup_encoder(i, cc):
+                self._send_midi(msg)
+
+        # Configure transpose encoder
+        for msg in QSetup.setup_transpose_encoder(TRANSPOSE_ENCODER_CC):
+            self._send_midi(msg)
+
+        # Paint LEDs
         if self._cmix:
             self._cmix.update_leds()
 
@@ -131,24 +125,18 @@ class BeatStep_Q(ControlSurface):
             self._handle_ch1(cc, value)
 
     def _handle_ch10(self, cc, value):
-        # Pads: fire on press (value > 0) only
         if cc in _PAD_CC_TO_INDEX:
             if value > 0:
                 self._cmix.on_pad_press(_PAD_CC_TO_INDEX[cc])
             return
-
-        # Encoders
         if cc in _ENCODER_CC_TO_INDEX:
             self._cmix.on_encoder_turn(_ENCODER_CC_TO_INDEX[cc], value)
             return
-
-        # Transpose encoder
         if cc == TRANSPOSE_ENCODER_CC:
             self._cmix.on_transpose_turn(value)
 
     def _handle_ch1(self, cc, value):
         is_press = value > 0
-
         if cc == BTN_SHIFT_CC:
             if is_press:
                 self._cmix.on_shift_press()
@@ -168,4 +156,3 @@ class BeatStep_Q(ControlSurface):
         for i in range(16):
             self._send_midi(QSetup.set_led(i, QSetup.OFF))
         self._send_midi(QSetup.set_led(QSetup.RECALL_LED_INDEX, QSetup.OFF))
-

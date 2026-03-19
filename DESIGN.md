@@ -202,3 +202,5 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 **Function button CC IDs**: It is **not confirmed** that function buttons (`play`, `stop`, `recall`, `shift`, `chan`, `store`, `cntrl`) send CC messages at all. They may use a different MIDI message type. This must be investigated against the BeatStep MIDI implementation documentation or the reference implementation (raphaelquast/beatstep) before implementation.
 
 **Parameter value clamping**: When adjusting a parameter value via encoder delta, clamp the result to `[0.0, 1.0]` before assigning: `param.value = max(0.0, min(1.0, param.value + delta))`.
+
+**Script entry point**: `__init__.py` must define `create_instance(c_instance)` returning the `ControlSurface` instance. Without it Live silently ignores the script and it will not appear in the Control Surface dropdown. Use `self._task_group` (not `self._tasks`) for the task scheduler in `_Framework.ControlSurface`.
