@@ -172,7 +172,7 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 
 **Hardware configuration**: Configured on **every startup** via `_setup_hardware` (called from `port_settings_changed`). This keeps controller state deterministic. Do not save/restore hardware state across sessions.
 
-**Hardware setup timing**: Use `Task.sequence(Task.wait(2.1), Task.run(_setup_hardware))`. The BeatStep requires ~2 seconds after connection before reliably accepting sysex.
+**Hardware setup timing**: Use a two-stage task sequence: sysex at T+2.1 s, LED update at T+3.6 s (i.e. `Task.wait(2.1)` → `_send_setup_sysex` → `Task.wait(1.5)` → `_send_leds`). The BeatStep requires ~2 s after connection before reliably accepting sysex. The additional 1.5 s gap before LED commands gives the BeatStep time to finish processing all sysex — LED color commands (sysex cmd 0x10) are silently ignored by the firmware for any pad that has not yet been switched to note mode (mode 9). Sending LEDs too quickly after sysex results in only a subset of pads responding.
 
 **Disconnect cleanup**: On disconnect (`disconnect()` or `port_settings_changed` when port is lost), send all-black to all pad LEDs.
 
@@ -199,8 +199,25 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 
 **Feature scope**: Mix Mode only. `play`, `stop`, `chan`, `store`, `cntrl` have no function in the current implementation.
 
-**Function button CC IDs**: It is **not confirmed** that function buttons (`play`, `stop`, `recall`, `shift`, `chan`, `store`, `cntrl`) send CC messages at all. They may use a different MIDI message type. This must be investigated against the BeatStep MIDI implementation documentation or the reference implementation (raphaelquast/beatstep) before implementation.
+**Function button CC IDs (confirmed)**: Function buttons send CC on **CH10** (same channel as pads and encoders). Confirmed values: `shift` = CC 7, `recall` = CC 5. The CC value is 127 on press, 0 on release. Before the script's sysex runs (factory state), buttons may temporarily send on CH1 — the script handles both channels defensively in `_handle_function_button`.
 
 **Parameter value clamping**: When adjusting a parameter value via encoder delta, clamp the result to `[0.0, 1.0]` before assigning: `param.value = max(0.0, min(1.0, param.value + delta))`.
 
 **Script entry point**: `__init__.py` must define `create_instance(c_instance)` returning the `ControlSurface` instance. Without it Live silently ignores the script and it will not appear in the Control Surface dropdown. Use `self._task_group` (not `self._tasks`) for the task scheduler in `_Framework.ControlSurface`.
+
+**MIDI routing — `receive_midi` requires explicit registration (Live 11+)**: In Live 11 and later, `receive_midi` is **not called by default** for MIDI arriving on the script's port. MIDI addresses must be explicitly forwarded via `build_midi_map`:
+
+```python
+def build_midi_map(self, midi_map_handle):
+    ControlSurface.build_midi_map(self, midi_map_handle)
+    h = self._c_instance.handle()
+    for note in PAD_MSG_IDS:
+        Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
+    for cc in ENCODER_MSG_IDS:
+        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
+    # ... etc for all other CCs
+```
+
+Also call `self.request_rebuild_midi_map()` at the end of `__init__` to ensure Live triggers the MIDI map build on the first load. Without this, `build_midi_map` may not be called during the initial startup, `receive_midi` never fires, and all pad/encoder input is silently ignored. This was the root cause of pads not selecting tracks.
+
+**Pad note numbers — factory defaults are correct**: The BeatStep factory preset already assigns notes 44–51 (top row) and 36–43 (bottom row) to pads — matching `PAD_MSG_IDS`. There is no need to set the note number via sysex. Only mode (9 = note gate), channel (9 = CH10), and behaviour (1 = gate) need to be sent (3 sysex messages per pad, not 6).
