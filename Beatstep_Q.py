@@ -93,18 +93,22 @@ class Beatstep_Q(ControlSurface):
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
+        self.log_message('BeatStep_Q: build_midi_map called')
         ControlSurface.build_midi_map(self, midi_map_handle)
-        h = self._c_instance.handle()
-        for note in PAD_MSG_IDS:
-            Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
-        for cc in ENCODER_MSG_IDS:
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
-        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_ENCODER_CC)
-        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
-        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
-        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
-        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
-        self.log_message('BeatStep_Q: MIDI map built')
+        try:
+            h = self._c_instance.handle()
+            for note in PAD_MSG_IDS:
+                Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
+            for cc in ENCODER_MSG_IDS:
+                Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_ENCODER_CC)
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
+            self.log_message('BeatStep_Q: MIDI map built OK')
+        except Exception as e:
+            self.log_message('BeatStep_Q: build_midi_map ERROR: %s' % str(e))
 
     # ------------------------------------------------------------------
     # Hardware setup — two-stage: sysex first, LEDs 1.5s later
