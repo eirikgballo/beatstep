@@ -17,20 +17,21 @@ from .CMix import CMix
 # MIDI constants
 # ---------------------------------------------------------------------------
 
-# All pad / encoder / transpose traffic arrives on MIDI channel 10 (index 9).
+# Pads send Note On/Off on CH10 (note gate mode).
+_STATUS_NOTE_ON_CH10  = 0x99   # 0x90 | 9
+
+# Encoders, transpose encoder, and function buttons all send CC on CH10.
 _STATUS_CC_CH10 = 0xB9  # 0xB0 | 9
 
-# Function buttons — channel and CC values need hardware verification.
-# TODO: confirm with a MIDI monitor (may be CH1 or a different channel).
-_STATUS_CC_CH1 = 0xB0
-BTN_SHIFT_CC  = 49
+# Function button CC numbers on CH10 (confirmed from raphaelquast reference).
+BTN_SHIFT_CC  = 7
 BTN_RECALL_CC = 5
 
-# CC IDs programmed into the hardware via sysex.
-# Top row = pads 0-7, bottom row = pads 8-15.
+# Note numbers programmed into the hardware via sysex (note gate mode).
+# Physical layout (column-major in hardware): indices 0-3 = column 1, etc.
 PAD_MSG_IDS = [
-    44, 45, 46, 47, 48, 49, 50, 51,   # top row   (pads 1-8  / index 0-7)
-    36, 37, 38, 39, 40, 41, 42, 43,   # bottom row (pads 9-16 / index 8-15)
+    44, 45, 46, 47, 48, 49, 50, 51,   # hw 0x70–0x77
+    36, 37, 38, 39, 40, 41, 42, 43,   # hw 0x78–0x7F
 ]
 
 ENCODER_MSG_IDS = [
@@ -41,7 +42,7 @@ ENCODER_MSG_IDS = [
 TRANSPOSE_ENCODER_CC = 4
 
 # Reverse-lookup maps built once at import time for O(1) dispatch.
-_PAD_CC_TO_INDEX     = {cc: i for i, cc in enumerate(PAD_MSG_IDS)}
+_PAD_NOTE_TO_INDEX   = {note: i for i, note in enumerate(PAD_MSG_IDS)}
 _ENCODER_CC_TO_INDEX = {cc: i for i, cc in enumerate(ENCODER_MSG_IDS)}
 
 
@@ -99,8 +100,8 @@ class Beatstep_Q(ControlSurface):
     def _setup_hardware(self):
         self.log_message('BeatStep_Q: _setup_hardware running')
         try:
-            for i, cc in enumerate(PAD_MSG_IDS):
-                for msg in QSetup.setup_pad(i, cc):
+            for i, note in enumerate(PAD_MSG_IDS):
+                for msg in QSetup.setup_pad(i, note):
                     self._send_midi(msg)
 
             for i, cc in enumerate(ENCODER_MSG_IDS):
@@ -108,6 +109,12 @@ class Beatstep_Q(ControlSurface):
                     self._send_midi(msg)
 
             for msg in QSetup.setup_transpose_encoder(TRANSPOSE_ENCODER_CC):
+                self._send_midi(msg)
+
+            for msg in QSetup.setup_button(QSetup.RECALL_HW_INDEX):
+                self._send_midi(msg)
+
+            for msg in QSetup.setup_button(QSetup.SHIFT_HW_INDEX):
                 self._send_midi(msg)
 
             self.log_message('BeatStep_Q: sysex sent OK')
@@ -128,26 +135,27 @@ class Beatstep_Q(ControlSurface):
         if len(midi_bytes) < 3:
             return
         status = midi_bytes[0]
-        cc     = midi_bytes[1]
-        value  = midi_bytes[2]
+        data1  = midi_bytes[1]
+        data2  = midi_bytes[2]
 
-        if status == _STATUS_CC_CH10:
-            self._handle_ch10(cc, value)
-        elif status == _STATUS_CC_CH1:
-            self._handle_ch1(cc, value)
+        if status == _STATUS_NOTE_ON_CH10:
+            self._handle_pad_note(data1, data2)
+        elif status == _STATUS_CC_CH10:
+            self._handle_ch10_cc(data1, data2)
 
-    def _handle_ch10(self, cc, value):
-        if cc in _PAD_CC_TO_INDEX:
-            if value > 0:
-                self._cmix.on_pad_press(_PAD_CC_TO_INDEX[cc])
-            return
+    def _handle_pad_note(self, note, velocity):
+        """Handle Note On CH10 — pad presses in note gate mode."""
+        if note in _PAD_NOTE_TO_INDEX and velocity > 0:
+            self._cmix.on_pad_press(_PAD_NOTE_TO_INDEX[note])
+
+    def _handle_ch10_cc(self, cc, value):
+        """Handle CC CH10 — encoders, transpose encoder, and function buttons."""
         if cc in _ENCODER_CC_TO_INDEX:
             self._cmix.on_encoder_turn(_ENCODER_CC_TO_INDEX[cc], value)
             return
         if cc == TRANSPOSE_ENCODER_CC:
             self._cmix.on_transpose_turn(value)
-
-    def _handle_ch1(self, cc, value):
+            return
         is_press = value > 0
         if cc == BTN_SHIFT_CC:
             if is_press:
@@ -162,10 +170,18 @@ class Beatstep_Q(ControlSurface):
     # LED helpers
     # ------------------------------------------------------------------
 
-    def _send_led(self, hw_index, color):
-        self._send_midi(QSetup.set_led(hw_index, color))
+    def _send_led(self, index, color):
+        """
+        Send LED color via sysex (cmd 0x10).
+        index 0-15: pad LED at hw_index = PAD_HW_OFFSET + index.
+        index == QSetup.RECALL_LED_INDEX (16): recall button at hw 0x5C.
+        """
+        if 0 <= index < 16:
+            self._send_midi(QSetup.set_led(index + QSetup.PAD_HW_OFFSET, color))
+        elif index == QSetup.RECALL_LED_INDEX:
+            self._send_midi(QSetup.set_led(QSetup.RECALL_HW_INDEX, color))
 
     def _clear_leds(self):
         for i in range(16):
             self._send_midi(QSetup.set_led(i + QSetup.PAD_HW_OFFSET, QSetup.OFF))
-        self._send_midi(QSetup.set_led(QSetup.RECALL_LED_INDEX, QSetup.OFF))
+        self._send_midi(QSetup.set_led(QSetup.RECALL_HW_INDEX, QSetup.OFF))
