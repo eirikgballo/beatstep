@@ -7,6 +7,8 @@ every connection so controller state is always deterministic.
 See DESIGN.md for the full specification.
 """
 
+import Live
+
 from _Framework.ControlSurface import ControlSurface
 from _Framework import Task
 
@@ -89,8 +91,23 @@ class Beatstep_Q(ControlSurface):
         self._clear_leds()
         ControlSurface.disconnect(self)
 
+    def build_midi_map(self, midi_map_handle):
+        """Register MIDI addresses so receive_midi is called for them."""
+        ControlSurface.build_midi_map(self, midi_map_handle)
+        h = self._c_instance.handle()
+        for note in PAD_MSG_IDS:
+            Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
+        for cc in ENCODER_MSG_IDS:
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
+        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_ENCODER_CC)
+        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
+        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
+        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
+        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
+        self.log_message('BeatStep_Q: MIDI map built')
+
     # ------------------------------------------------------------------
-    # Hardware setup — two-stage: sysex first, LEDs 0.5s later
+    # Hardware setup — two-stage: sysex first, LEDs 1.5s later
     # ------------------------------------------------------------------
 
     def _schedule_hardware_setup(self):
