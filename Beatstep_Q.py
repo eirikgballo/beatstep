@@ -73,6 +73,7 @@ class Beatstep_Q(ControlSurface):
         except Exception as e:
             self.log_message('BeatStep_Q: ERROR creating CMix: %s' % str(e))
         self._schedule_hardware_setup()
+        self.request_rebuild_midi_map()
         self.log_message('BeatStep_Q: __init__ done')
 
     # ------------------------------------------------------------------
@@ -171,16 +172,16 @@ class Beatstep_Q(ControlSurface):
     # ------------------------------------------------------------------
 
     def receive_midi(self, midi_bytes):
+        # Log ALL incoming calls to confirm receive_midi is being invoked
+        if self._midi_log_count < 30:
+            self.log_message('BeatStep_Q: receive_midi len=%d bytes=%s' % (len(midi_bytes), list(midi_bytes[:4])))
+            self._midi_log_count += 1
+
         if len(midi_bytes) < 3:
             return
         status = midi_bytes[0]
         data1  = midi_bytes[1]
         data2  = midi_bytes[2]
-
-        # Log first 30 MIDI messages to diagnose routing
-        if self._midi_log_count < 30:
-            self.log_message('BeatStep_Q: MIDI %02X %02X %02X' % (status, data1, data2))
-            self._midi_log_count += 1
 
         if status == _STATUS_NOTE_ON_CH10:
             self._handle_pad_note(data1, data2)
