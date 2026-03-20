@@ -93,18 +93,16 @@ def set_led(hw_index, color):
 # Pad setup (note gate mode)
 # ---------------------------------------------------------------------------
 
-def setup_pad(pad_index, note_number):
+def setup_pad(pad_index):
     """
     Configure one pad in note gate mode on CH10.
     Hardware index = pad_index + PAD_HW_OFFSET (0x70).
+    Note number is intentionally NOT set — factory defaults (44-51, 36-43) are correct.
     """
     hw = pad_index + PAD_HW_OFFSET
     return [
         _msg(_CMD_MODE,      hw, _PAD_NOTE_GATE),
         _msg(_CMD_CHANNEL,   hw, _BEATSTEP_CHANNEL),
-        _msg(_CMD_NUMBER,    hw, note_number),
-        _msg(_CMD_OFF_VAL,   hw, 0x00),
-        _msg(_CMD_ON_VAL,    hw, 0x7F),
         _msg(_CMD_BEHAVIOUR, hw, _BEHAVIOUR_GATE),
     ]
 

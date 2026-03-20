@@ -20,10 +20,13 @@ from .CMix import CMix
 # Pads send Note On/Off on CH10 (note gate mode).
 _STATUS_NOTE_ON_CH10  = 0x99   # 0x90 | 9
 
-# Encoders, transpose encoder, and function buttons all send CC on CH10.
+# Encoders, transpose encoder, and function buttons send CC.
+# After sysex setup, all are on CH10. Before sysex (factory state), function
+# buttons may be on CH1, so we handle both.
 _STATUS_CC_CH10 = 0xB9  # 0xB0 | 9
+_STATUS_CC_CH1  = 0xB0
 
-# Function button CC numbers on CH10 (confirmed from raphaelquast reference).
+# Function button CC numbers (confirmed from raphaelquast reference).
 BTN_SHIFT_CC  = 7
 BTN_RECALL_CC = 5
 
@@ -57,6 +60,7 @@ class Beatstep_Q(ControlSurface):
         self.log_message('BeatStep_Q: __init__ start')
         self._cmix = None
         self._hw_task = None
+        self._midi_log_count = 0  # limit noisy MIDI logging
         try:
             self._cmix = CMix(
                 song         = self.song(),
@@ -86,7 +90,7 @@ class Beatstep_Q(ControlSurface):
         ControlSurface.disconnect(self)
 
     # ------------------------------------------------------------------
-    # Hardware setup
+    # Hardware setup — two-stage: sysex first, LEDs 0.5s later
     # ------------------------------------------------------------------
 
     def _schedule_hardware_setup(self):
@@ -94,15 +98,24 @@ class Beatstep_Q(ControlSurface):
         if self._hw_task is not None:
             self._hw_task.kill()
         self._hw_task = self._task_group.add(
-            Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
+            Task.sequence(
+                Task.wait(2.1),
+                Task.run(self._send_setup_sysex),
+                Task.wait(1.5),          # give BeatStep time to process all sysex
+                Task.run(self._send_leds),
+            )
         )
 
-    def _setup_hardware(self):
-        self.log_message('BeatStep_Q: _setup_hardware running')
+    def _send_setup_sysex(self):
+        self.log_message('BeatStep_Q: _send_setup_sysex running')
         try:
-            for i, note in enumerate(PAD_MSG_IDS):
-                for msg in QSetup.setup_pad(i, note):
+            # Pads only: mode=9 (note gate), channel=CH10, behaviour=gate.
+            # Note numbers are NOT re-configured — factory defaults match PAD_MSG_IDS.
+            for i in range(16):
+                for msg in QSetup.setup_pad(i):
                     self._send_midi(msg)
+
+            self.log_message('BeatStep_Q: pad sysex sent (%d pads, 3 msgs each)' % 16)
 
             for i, cc in enumerate(ENCODER_MSG_IDS):
                 for msg in QSetup.setup_encoder(i, cc):
@@ -117,15 +130,20 @@ class Beatstep_Q(ControlSurface):
             for msg in QSetup.setup_button(QSetup.SHIFT_HW_INDEX):
                 self._send_midi(msg)
 
-            self.log_message('BeatStep_Q: sysex sent OK')
+            self.log_message('BeatStep_Q: all sysex sent OK')
+        except Exception as e:
+            self.log_message('BeatStep_Q: ERROR in _send_setup_sysex: %s' % str(e))
 
+    def _send_leds(self):
+        self.log_message('BeatStep_Q: _send_leds running')
+        try:
             if self._cmix:
                 self._cmix.update_leds()
                 self.log_message('BeatStep_Q: LEDs painted')
             else:
                 self.log_message('BeatStep_Q: _cmix is None, skipping LEDs')
         except Exception as e:
-            self.log_message('BeatStep_Q: ERROR in _setup_hardware: %s' % str(e))
+            self.log_message('BeatStep_Q: ERROR in _send_leds: %s' % str(e))
 
     # ------------------------------------------------------------------
     # MIDI receive
@@ -138,24 +156,38 @@ class Beatstep_Q(ControlSurface):
         data1  = midi_bytes[1]
         data2  = midi_bytes[2]
 
+        # Log first 30 MIDI messages to diagnose routing
+        if self._midi_log_count < 30:
+            self.log_message('BeatStep_Q: MIDI %02X %02X %02X' % (status, data1, data2))
+            self._midi_log_count += 1
+
         if status == _STATUS_NOTE_ON_CH10:
             self._handle_pad_note(data1, data2)
         elif status == _STATUS_CC_CH10:
-            self._handle_ch10_cc(data1, data2)
+            self._handle_cc(data1, data2)
+        elif status == _STATUS_CC_CH1:
+            # Handle function buttons before sysex configures them to CH10
+            self._handle_function_button(data1, data2)
 
     def _handle_pad_note(self, note, velocity):
         """Handle Note On CH10 — pad presses in note gate mode."""
         if note in _PAD_NOTE_TO_INDEX and velocity > 0:
-            self._cmix.on_pad_press(_PAD_NOTE_TO_INDEX[note])
+            idx = _PAD_NOTE_TO_INDEX[note]
+            self.log_message('BeatStep_Q: pad press index=%d note=%d' % (idx, note))
+            self._cmix.on_pad_press(idx)
 
-    def _handle_ch10_cc(self, cc, value):
-        """Handle CC CH10 — encoders, transpose encoder, and function buttons."""
+    def _handle_cc(self, cc, value):
+        """Handle CC CH10 — encoders, transpose, and function buttons (post-sysex)."""
         if cc in _ENCODER_CC_TO_INDEX:
             self._cmix.on_encoder_turn(_ENCODER_CC_TO_INDEX[cc], value)
             return
         if cc == TRANSPOSE_ENCODER_CC:
             self._cmix.on_transpose_turn(value)
             return
+        self._handle_function_button(cc, value)
+
+    def _handle_function_button(self, cc, value):
+        """Handle SHIFT and RECALL on any channel."""
         is_press = value > 0
         if cc == BTN_SHIFT_CC:
             if is_press:
