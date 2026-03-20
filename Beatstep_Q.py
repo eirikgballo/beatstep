@@ -55,6 +55,7 @@ class Beatstep_Q(ControlSurface):
         ControlSurface.__init__(self, c_instance)
         self.log_message('BeatStep_Q: __init__ start')
         self._cmix = None
+        self._hw_task = None
         try:
             self._cmix = CMix(
                 song         = self.song(),
@@ -89,7 +90,9 @@ class Beatstep_Q(ControlSurface):
 
     def _schedule_hardware_setup(self):
         self.log_message('BeatStep_Q: scheduling hardware setup')
-        self._task_group.add(
+        if self._hw_task is not None:
+            self._hw_task.kill()
+        self._hw_task = self._task_group.add(
             Task.sequence(Task.wait(2.1), Task.run(self._setup_hardware))
         )
 
@@ -153,6 +156,7 @@ class Beatstep_Q(ControlSurface):
                 self._cmix.on_shift_release()
         elif cc == BTN_RECALL_CC and is_press:
             self._cmix.on_recall_press()
+            self._schedule_hardware_setup()  # re-configure after BeatStep firmware preset recall
 
     # ------------------------------------------------------------------
     # LED helpers
@@ -163,5 +167,5 @@ class Beatstep_Q(ControlSurface):
 
     def _clear_leds(self):
         for i in range(16):
-            self._send_midi(QSetup.set_led(i, QSetup.OFF))
+            self._send_midi(QSetup.set_led(i + QSetup.PAD_HW_OFFSET, QSetup.OFF))
         self._send_midi(QSetup.set_led(QSetup.RECALL_LED_INDEX, QSetup.OFF))

@@ -103,12 +103,12 @@ class CMix:
     def update_leds(self):
         # Pads 0-14: regular tracks
         for i in range(15):
-            self._send_led(i, self._pad_color(i))
+            self._send_led(i + QSetup.PAD_HW_OFFSET, self._pad_color(i))
 
         # Pad 15: master track
         master   = self._song.master_track
         selected = self._song.view.selected_track
-        self._send_led(15, QSetup.RED if selected == master else QSetup.BLUE)
+        self._send_led(15 + QSetup.PAD_HW_OFFSET, QSetup.RED if selected == master else QSetup.BLUE)
 
         # Recall button LED: blue on page 1, magenta on page 2+
         recall_color = QSetup.BLUE if self._page == 0 else QSetup.MAGENTA
