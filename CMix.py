@@ -109,13 +109,13 @@ class CMix:
         if param_index >= len(rack.parameters):
             return
         param  = rack.parameters[param_index]
-        # Two's-complement relative decoding (BeatStep relative mode 2):
+        # Signed-bit relative decoding (BeatStep relative mode 1):
         #   CW:  raw 1–63  → +1 to +63
-        #   CCW: raw 65–127 → -63 to -1  (127 = -1, 65 = -63)
-        delta  = raw_value if raw_value < 64 else raw_value - 128
+        #   CCW: raw 65–127 → -1 to -63  (65 = -1 slow, 127 = -63 fast)
+        delta  = raw_value if raw_value < 64 else -(raw_value - 64)
         speed  = abs(delta)
-        step   = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (param.maximum - param.minimum)
-        param.value = max(param.minimum, min(param.maximum, param.value + (step if delta > 0 else -step)))
+        step   = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (param.max - param.min)
+        param.value = max(param.min, min(param.max, param.value + (step if delta > 0 else -step)))
 
     # ------------------------------------------------------------------
     # Encoder input
@@ -123,13 +123,13 @@ class CMix:
 
     def on_transpose_turn(self, raw_value):
         """Transpose encoder: always controls volume of selected track."""
-        delta = raw_value if raw_value < 64 else raw_value - 128
+        delta = raw_value if raw_value < 64 else -(raw_value - 64)
         if delta == 0:
             return
         speed = abs(delta)
         vol   = self._song.view.selected_track.mixer_device.volume
-        step  = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (vol.maximum - vol.minimum)
-        vol.value = max(vol.minimum, min(vol.maximum, vol.value + (step if delta > 0 else -step)))
+        step  = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (vol.max - vol.min)
+        vol.value = max(vol.min, min(vol.max, vol.value + (step if delta > 0 else -step)))
 
     # ------------------------------------------------------------------
     # Function button input
