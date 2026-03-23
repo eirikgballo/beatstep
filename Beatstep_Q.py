@@ -145,6 +145,7 @@ class Beatstep_Q(ControlSurface):
                 self._send_midi(msg)
 
             self.log_message('BeatStep_Q: all sysex sent OK')
+            self.request_rebuild_midi_map()
         except Exception as e:
             self.log_message('BeatStep_Q: ERROR in _send_setup_sysex: %s' % str(e))
 
