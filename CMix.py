@@ -149,7 +149,7 @@ class CMix:
     @staticmethod
     def _find_rack(track):
         for device in track.devices:
-            if device.class_name == 'AudioEffectGroupDevice':
+            if device.class_name.endswith('GroupDevice'):
                 return device
         return None
 
