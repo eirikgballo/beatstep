@@ -108,7 +108,7 @@ class CMix:
                 rack.parameters[param_index],
                 9,   # CH10 (0-indexed)
                 cc,
-                Live.MidiMap.MapMode.relative_smooth_signed_bit2,
+                Live.MidiMap.MapMode.relative_smooth_signed_bit,
                 False,
             )
 
@@ -118,8 +118,8 @@ class CMix:
 
     @staticmethod
     def _raw_to_delta(raw):
-        """Convert BeatStep relative mode 2 raw CC value to signed integer delta."""
-        return raw - 64  # 65 -> +1, 63 -> -1, 64 -> 0
+        """Convert BeatStep relative mode 1 (signed bit) CC value to signed integer delta."""
+        return raw if raw < 64 else raw - 128  # 1 -> +1, 127 -> -1
 
     def on_transpose_turn(self, raw_value):
         """Transpose encoder: always controls volume of selected track."""

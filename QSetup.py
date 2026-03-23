@@ -46,7 +46,7 @@ _ENC_MIDI_CC      = 1   # encoders: MIDI CC mode
 
 # Behaviour values
 _BEHAVIOUR_GATE       = 1  # pad/button: send while held, release on let go
-_ENC_RELATIVE_MODE_2  = 2  # encoder: relative mode 2 (65=+1, 63=-1)
+_ENC_RELATIVE_MODE_1  = 1  # encoder: relative mode 1 / signed bit (CW=1-63, CCW=65-127)
 
 # MIDI channel for all controls (CH10, 0-indexed = 9)
 _BEATSTEP_CHANNEL = 0x09
@@ -106,7 +106,7 @@ def setup_encoder(enc_index, cc_number):
     return [
         _msg(_CMD_MODE,      hw, _ENC_MIDI_CC),
         _msg(_CMD_CHANNEL,   hw, _BEATSTEP_CHANNEL),
-        _msg(_CMD_BEHAVIOUR, hw, _ENC_RELATIVE_MODE_2),
+        _msg(_CMD_BEHAVIOUR, hw, _ENC_RELATIVE_MODE_1),
         _msg(_CMD_NUMBER,    hw, cc_number),
     ]
 
@@ -117,6 +117,6 @@ def setup_transpose_encoder(cc_number):
     return [
         _msg(_CMD_MODE,      hw, _ENC_MIDI_CC),
         _msg(_CMD_CHANNEL,   hw, _BEATSTEP_CHANNEL),
-        _msg(_CMD_BEHAVIOUR, hw, _ENC_RELATIVE_MODE_2),
+        _msg(_CMD_BEHAVIOUR, hw, _ENC_RELATIVE_MODE_1),
         _msg(_CMD_NUMBER,    hw, cc_number),
     ]
