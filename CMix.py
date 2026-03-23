@@ -67,15 +67,16 @@ class CMix:
         if track is None:
             return
 
-        last_time, last_track = self._last_tap.get(pad_index, (0, None))
-        if now - last_time < DOUBLE_TAP_MS and last_track is track:
+        track_index = self._page * 15 + pad_index
+        last_time, last_index = self._last_tap.get(pad_index, (0, -1))
+        if now - last_time < DOUBLE_TAP_MS and last_index == track_index:
             # Second tap within window: toggle solo
             track.solo = not track.solo
-            self._last_tap[pad_index] = (0, None)
+            self._last_tap[pad_index] = (0, -1)
         else:
             # First tap: select track
             self._song.view.selected_track = track
-            self._last_tap[pad_index] = (now, track)
+            self._last_tap[pad_index] = (now, track_index)
 
     # ------------------------------------------------------------------
     # Encoder input
