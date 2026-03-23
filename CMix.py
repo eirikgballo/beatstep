@@ -22,8 +22,8 @@ import time
 #   ENCODER_ACCELERATION: exponent applied to speed. 1.0 = linear (every click
 #                         the same size). 1.5 = fast turns are disproportionately
 #                         larger, giving fine control when slow + quick sweep when fast.
-ENCODER_SENSITIVITY   = 1
-ENCODER_ACCELERATION  = 1
+ENCODER_SENSITIVITY   = 0.005   # ~200 slow clicks to sweep full range
+ENCODER_ACCELERATION  = 1.0
 
 DOUBLE_TAP_MS = 0.400  # seconds
 
@@ -100,7 +100,7 @@ class CMix:
     # ------------------------------------------------------------------
 
     def on_encoder_turn(self, encoder_index, raw_value):
-        """Handle encoder CC from receive_midi. Uses bin offset delta (raw - 64)."""
+        """Handle encoder CC from receive_midi. Expects two's-complement relative values."""
         track = self._song.view.selected_track
         rack  = self._find_rack(track)
         if rack is None:
@@ -109,10 +109,13 @@ class CMix:
         if param_index >= len(rack.parameters):
             return
         param  = rack.parameters[param_index]
-        delta  = raw_value - 64  # bin offset: 65→+1, 96→+32, 63→-1, 32→-32
+        # Two's-complement relative decoding (BeatStep relative mode 2):
+        #   CW:  raw 1–63  → +1 to +63
+        #   CCW: raw 65–127 → -63 to -1  (127 = -1, 65 = -63)
+        delta  = raw_value if raw_value < 64 else raw_value - 128
         speed  = abs(delta)
-        step   = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY
-        param.value = max(0.0, min(1.0, param.value + (step if delta > 0 else -step)))
+        step   = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (param.maximum - param.minimum)
+        param.value = max(param.minimum, min(param.maximum, param.value + (step if delta > 0 else -step)))
 
     # ------------------------------------------------------------------
     # Encoder input
@@ -120,13 +123,13 @@ class CMix:
 
     def on_transpose_turn(self, raw_value):
         """Transpose encoder: always controls volume of selected track."""
-        delta = raw_value - 64  # bin offset: 65→+1, 63→-1
+        delta = raw_value if raw_value < 64 else raw_value - 128
         if delta == 0:
             return
         speed = abs(delta)
-        step  = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY
         vol   = self._song.view.selected_track.mixer_device.volume
-        vol.value = max(0.0, min(1.0, vol.value + (step if delta > 0 else -step)))
+        step  = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (vol.maximum - vol.minimum)
+        vol.value = max(vol.minimum, min(vol.maximum, vol.value + (step if delta > 0 else -step)))
 
     # ------------------------------------------------------------------
     # Function button input
