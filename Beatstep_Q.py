@@ -46,9 +46,8 @@ ENCODER_MSG_IDS = [
 
 TRANSPOSE_ENCODER_CC = 4
 
-# Reverse-lookup maps built once at import time for O(1) dispatch.
-_PAD_NOTE_TO_INDEX   = {note: i for i, note in enumerate(PAD_MSG_IDS)}
-_ENCODER_CC_TO_INDEX = {cc: i for i, cc in enumerate(ENCODER_MSG_IDS)}
+# Reverse-lookup map built once at import time for O(1) dispatch.
+_PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +64,9 @@ class Beatstep_Q(ControlSurface):
         self._midi_log_count = 0  # limit noisy MIDI logging
         try:
             self._cmix = CMix(
-                song         = self.song(),
-                show_message = self.show_message,
+                song                     = self.song(),
+                show_message             = self.show_message,
+                request_rebuild_midi_map = self.request_rebuild_midi_map,
             )
             self.log_message('BeatStep_Q: CMix created OK')
         except Exception as e:
@@ -98,13 +98,13 @@ class Beatstep_Q(ControlSurface):
             h = self._c_instance.handle()
             for note in PAD_MSG_IDS:
                 Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
-            for cc in ENCODER_MSG_IDS:
-                Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_ENCODER_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
+            if self._cmix:
+                self._cmix.map_encoders(midi_map_handle, ENCODER_MSG_IDS)
             self.log_message('BeatStep_Q: MIDI map built OK')
         except Exception as e:
             self.log_message('BeatStep_Q: build_midi_map ERROR: %s' % str(e))
@@ -180,10 +180,7 @@ class Beatstep_Q(ControlSurface):
             self._cmix.on_pad_press(idx)
 
     def _handle_cc(self, cc, value):
-        """Handle CC CH10 — encoders, transpose, and function buttons (post-sysex)."""
-        if cc in _ENCODER_CC_TO_INDEX:
-            self._cmix.on_encoder_turn(_ENCODER_CC_TO_INDEX[cc], value)
-            return
+        """Handle CC CH10 — transpose encoder and function buttons (post-sysex)."""
         if cc == TRANSPOSE_ENCODER_CC:
             self._cmix.on_transpose_turn(value)
             return

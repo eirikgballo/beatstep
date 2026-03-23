@@ -10,6 +10,7 @@ Responsibilities:
   - Shift+Recall: advance track page (wraps)
 """
 
+import Live
 import time
 
 # ---------------------------------------------------------------------------
@@ -23,15 +24,25 @@ DOUBLE_TAP_MS = 0.400  # seconds
 
 class CMix:
 
-    def __init__(self, song, show_message):
-        self._song         = song
-        self._show_message = show_message   # fn(text)
+    def __init__(self, song, show_message, request_rebuild_midi_map):
+        self._song                      = song
+        self._show_message              = show_message
+        self._request_rebuild_midi_map  = request_rebuild_midi_map
 
         self._page        = 0
         self._shift_held  = False
 
-        # Double-tap state: pad_index -> (timestamp, track)
+        # Double-tap state: pad_index -> (timestamp, track_index)
         self._last_tap = {}
+
+        self._song.view.add_selected_track_listener(self._on_selected_track_changed)
+
+    # ------------------------------------------------------------------
+    # Listener management
+    # ------------------------------------------------------------------
+
+    def _on_selected_track_changed(self):
+        self._request_rebuild_midi_map()
 
     # ------------------------------------------------------------------
     # Track helpers
@@ -79,6 +90,29 @@ class CMix:
             self._last_tap[pad_index] = (now, track_index)
 
     # ------------------------------------------------------------------
+    # Encoder MIDI map
+    # ------------------------------------------------------------------
+
+    def map_encoders(self, midi_map_handle, encoder_ccs):
+        """Called from build_midi_map. Maps each encoder CC to a macro parameter."""
+        track = self._song.view.selected_track
+        rack  = self._find_rack(track)
+        if rack is None:
+            return
+        for i, cc in enumerate(encoder_ccs):
+            param_index = i + 1  # parameters[0] = Device On; macros start at 1
+            if param_index >= len(rack.parameters):
+                break
+            Live.MidiMap.map_midi_cc(
+                midi_map_handle,
+                rack.parameters[param_index],
+                9,   # CH10 (0-indexed)
+                cc,
+                Live.MidiMap.MapMode.relative_smooth_binary_offset,
+                False,
+            )
+
+    # ------------------------------------------------------------------
     # Encoder input
     # ------------------------------------------------------------------
 
@@ -86,29 +120,6 @@ class CMix:
     def _raw_to_delta(raw):
         """Convert BeatStep relative mode 2 raw CC value to signed integer delta."""
         return raw - 64  # 65 -> +1, 63 -> -1, 64 -> 0
-
-    def on_encoder_turn(self, enc_index, raw_value):
-        """enc_index 0-15."""
-        delta = self._raw_to_delta(raw_value)
-        if delta == 0:
-            return
-
-        track = self._song.view.selected_track
-        rack  = self._find_rack(track)
-
-        if rack is None:
-            self._show_message("No rack on track")
-            return
-
-        macro_num = enc_index + 1  # 1-based for user-facing message
-        # parameters[0] = Device On; macros start at index 1
-        if len(rack.parameters) <= enc_index + 1:
-            self._show_message("Nothing assigned to macro %d" % macro_num)
-            return
-
-        param = rack.parameters[enc_index + 1]
-        step  = delta * ENCODER_SENSITIVITY / ENCODER_CLICKS_PER_ROTATION
-        param.value = max(0.0, min(1.0, param.value + step))
 
     def on_transpose_turn(self, raw_value):
         """Transpose encoder: always controls volume of selected track."""
@@ -149,7 +160,7 @@ class CMix:
     @staticmethod
     def _find_rack(track):
         for device in track.devices:
-            if device.class_name.endswith('GroupDevice'):
+            if device.class_name == 'AudioEffectGroupDevice':
                 return device
         return None
 
@@ -158,4 +169,7 @@ class CMix:
     # ------------------------------------------------------------------
 
     def cleanup(self):
-        pass
+        try:
+            self._song.view.remove_selected_track_listener(self._on_selected_track_changed)
+        except Exception:
+            pass
