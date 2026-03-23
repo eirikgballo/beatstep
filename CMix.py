@@ -108,7 +108,7 @@ class CMix:
                 rack.parameters[param_index],
                 9,   # CH10 (0-indexed)
                 cc,
-                Live.MidiMap.MapMode.relative_smooth_signed_bit,
+                Live.MidiMap.MapMode.relative_smooth_two_compliment,
                 False,
             )
 
