@@ -46,8 +46,9 @@ ENCODER_MSG_IDS = [
 
 TRANSPOSE_ENCODER_CC = 4
 
-# Reverse-lookup map built once at import time for O(1) dispatch.
-_PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
+# Reverse-lookup maps built once at import time for O(1) dispatch.
+_PAD_NOTE_TO_INDEX    = {note: i for i, note in enumerate(PAD_MSG_IDS)}
+_ENCODER_CC_TO_INDEX  = {cc: i   for i, cc   in enumerate(ENCODER_MSG_IDS)}
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +104,8 @@ class Beatstep_Q(ControlSurface):
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
-            if self._cmix:
-                self._cmix.map_encoders(midi_map_handle, ENCODER_MSG_IDS)
+            for cc in ENCODER_MSG_IDS:
+                Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
             self.log_message('BeatStep_Q: MIDI map built OK')
         except Exception as e:
             self.log_message('BeatStep_Q: build_midi_map ERROR: %s' % str(e))
@@ -181,9 +182,12 @@ class Beatstep_Q(ControlSurface):
             self._cmix.on_pad_press(idx)
 
     def _handle_cc(self, cc, value):
-        """Handle CC CH10 — transpose encoder and function buttons (post-sysex)."""
+        """Handle CC CH10 — encoders, transpose encoder, and function buttons."""
         if cc == TRANSPOSE_ENCODER_CC:
             self._cmix.on_transpose_turn(value)
+            return
+        if cc in _ENCODER_CC_TO_INDEX:
+            self._cmix.on_encoder_turn(_ENCODER_CC_TO_INDEX[cc], value)
             return
         self._handle_function_button(cc, value)
 

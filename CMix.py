@@ -10,14 +10,20 @@ Responsibilities:
   - Shift+Recall: advance track page (wraps)
 """
 
-import Live
 import time
 
 # ---------------------------------------------------------------------------
 # Sensitivity constants  (calibrate against real hardware after deployment)
 # ---------------------------------------------------------------------------
-ENCODER_CLICKS_PER_ROTATION = 24   # physical detents for one full rotation
-ENCODER_SENSITIVITY         = 1.0  # multiplier; >1 = faster, <1 = slower
+# Encoder feel — adjust these to taste:
+#   ENCODER_SENSITIVITY:  step size per single slow click (delta=1).
+#                         0.005 → ~200 slow clicks sweeps full range.
+#                         Increase to make slow turns coarser.
+#   ENCODER_ACCELERATION: exponent applied to speed. 1.0 = linear (every click
+#                         the same size). 1.5 = fast turns are disproportionately
+#                         larger, giving fine control when slow + quick sweep when fast.
+ENCODER_SENSITIVITY   = 0.005
+ENCODER_ACCELERATION  = 1.5
 
 DOUBLE_TAP_MS = 0.400  # seconds
 
@@ -93,42 +99,34 @@ class CMix:
     # Encoder MIDI map
     # ------------------------------------------------------------------
 
-    def map_encoders(self, midi_map_handle, encoder_ccs):
-        """Called from build_midi_map. Maps each encoder CC to a macro parameter."""
+    def on_encoder_turn(self, encoder_index, raw_value):
+        """Handle encoder CC from receive_midi. Uses bin offset delta (raw - 64)."""
         track = self._song.view.selected_track
         rack  = self._find_rack(track)
         if rack is None:
             return
-        for i, cc in enumerate(encoder_ccs):
-            param_index = i + 1  # parameters[0] = Device On; macros start at 1
-            if param_index >= len(rack.parameters):
-                break
-            Live.MidiMap.map_midi_cc(
-                midi_map_handle,
-                rack.parameters[param_index],
-                9,   # CH10 (0-indexed)
-                cc,
-                Live.MidiMap.MapMode.relative_smooth_two_compliment,
-                False,
-            )
+        param_index = encoder_index + 1  # parameters[0] = Device On; macros start at 1
+        if param_index >= len(rack.parameters):
+            return
+        param  = rack.parameters[param_index]
+        delta  = raw_value - 64  # bin offset: 65→+1, 96→+32, 63→-1, 32→-32
+        speed  = abs(delta)
+        step   = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY
+        param.value = max(0.0, min(1.0, param.value + (step if delta > 0 else -step)))
 
     # ------------------------------------------------------------------
     # Encoder input
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _raw_to_delta(raw):
-        """Convert BeatStep relative mode 1 (signed bit) CC value to signed integer delta."""
-        return raw if raw < 64 else raw - 128  # 1 -> +1, 127 -> -1
-
     def on_transpose_turn(self, raw_value):
         """Transpose encoder: always controls volume of selected track."""
-        delta = self._raw_to_delta(raw_value)
+        delta = raw_value - 64  # bin offset: 65→+1, 63→-1
         if delta == 0:
             return
-        vol  = self._song.view.selected_track.mixer_device.volume
-        step = delta * ENCODER_SENSITIVITY / ENCODER_CLICKS_PER_ROTATION
-        vol.value = max(0.0, min(1.0, vol.value + step))
+        speed = abs(delta)
+        step  = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY
+        vol   = self._song.view.selected_track.mixer_device.volume
+        vol.value = max(0.0, min(1.0, vol.value + (step if delta > 0 else -step)))
 
     # ------------------------------------------------------------------
     # Function button input
