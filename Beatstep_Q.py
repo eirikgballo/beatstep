@@ -119,24 +119,14 @@ class Beatstep_Q(ControlSurface):
         self.log_message('BeatStep_Q: scheduling hardware setup')
         if self._hw_task is not None:
             self._hw_task.kill()
-        # Stagger initial LED paint: 4 LEDs per batch, 0.15 s between batches.
-        # BeatStep drops LED sysex if too many arrive in one burst (~4 max).
-        self._hw_task = self._task_group.add(
-            Task.sequence(
-                Task.wait(2.1),
-                Task.run(self._send_setup_sysex),
-                Task.wait(1.5),
-                Task.run(lambda: self._send_leds_batch(0)),
-                Task.wait(0.15),
-                Task.run(lambda: self._send_leds_batch(1)),
-                Task.wait(0.15),
-                Task.run(lambda: self._send_leds_batch(2)),
-                Task.wait(0.15),
-                Task.run(lambda: self._send_leds_batch(3)),
-                Task.wait(0.15),
-                Task.run(lambda: self._send_leds_batch(4)),
-            )
-        )
+        # Stagger initial LED paint: 1 LED per step, 0.15 s between each.
+        # BeatStep drops LED sysex when more than ~1 arrives in a 0.15 s window.
+        steps = [Task.wait(2.1), Task.run(self._send_setup_sysex), Task.wait(1.5)]
+        for i in range(16):
+            steps.append(Task.run(lambda idx=i: self._paint_led(idx)))
+            steps.append(Task.wait(0.15))
+        steps.append(Task.run(lambda: self._paint_led(QSetup.RECALL_LED_INDEX)))
+        self._hw_task = self._task_group.add(Task.sequence(*steps))
 
     def _send_setup_sysex(self):
         self.log_message('BeatStep_Q: _send_setup_sysex running')
@@ -166,27 +156,16 @@ class Beatstep_Q(ControlSurface):
         except Exception as e:
             self.log_message('BeatStep_Q: ERROR in _send_setup_sysex: %s' % str(e))
 
-    def _send_leds_batch(self, batch):
-        """
-        Send one batch of 4 LED sysex messages for the initial paint.
-        Batches 0-3: pad LEDs 0-15 (4 per batch).
-        Batch 4: recall button LED.
-        Each batch is called 0.15 s apart so the BeatStep buffer doesn't overflow.
-        """
+    def _paint_led(self, index):
+        """Paint one LED during the staggered initial sequence."""
         if not self._cmix:
             return
         try:
-            if batch < 4:
-                start = batch * 4
-                for i in range(start, start + 4):
-                    self._cmix.paint_led(i)
-                if batch == 3:
-                    self.log_message('BeatStep_Q: pad LEDs batches done')
-            elif batch == 4:
-                self._cmix.paint_led(QSetup.RECALL_LED_INDEX)
+            self._cmix.paint_led(index)
+            if index == QSetup.RECALL_LED_INDEX:
                 self.log_message('BeatStep_Q: all LEDs painted')
         except Exception as e:
-            self.log_message('BeatStep_Q: ERROR in _send_leds_batch %d: %s' % (batch, str(e)))
+            self.log_message('BeatStep_Q: ERROR in _paint_led %d: %s' % (index, str(e)))
 
     # ------------------------------------------------------------------
     # MIDI receive
