@@ -34,6 +34,9 @@ class CMix:
         self._page        = 0
         self._shift_held  = False
 
+        # LED state cache: only send sysex when color changes (BeatStep drops rapid bursts)
+        self._led_state = [None] * 17
+
         # Double-tap state: pad_index -> (timestamp, track)
         self._last_tap = {}
 
@@ -100,19 +103,39 @@ class CMix:
     # LED update
     # ------------------------------------------------------------------
 
+    def _set_led(self, index, color):
+        """Send LED sysex only if color has changed since last send."""
+        if self._led_state[index] != color:
+            self._led_state[index] = color
+            self._send_led(index, color)
+
+    def paint_led(self, index):
+        """Force-send the current desired color for one LED, bypassing the delta cache.
+        Used during the staggered initial paint from Beatstep_Q."""
+        if index == QSetup.RECALL_LED_INDEX:
+            color = QSetup.BLUE if self._page == 0 else QSetup.MAGENTA
+        elif index == 15:
+            master   = self._song.master_track
+            selected = self._song.view.selected_track
+            color = QSetup.RED if selected == master else QSetup.BLUE
+        else:
+            color = self._pad_color(index)
+        self._led_state[index] = color
+        self._send_led(index, color)
+
     def update_leds(self):
         # Pads 0-14: regular tracks
         for i in range(15):
-            self._send_led(i, self._pad_color(i))
+            self._set_led(i, self._pad_color(i))
 
         # Pad 15: master track
         master   = self._song.master_track
         selected = self._song.view.selected_track
-        self._send_led(15, QSetup.RED if selected == master else QSetup.BLUE)
+        self._set_led(15, QSetup.RED if selected == master else QSetup.BLUE)
 
         # Recall button LED: blue on page 1, magenta on page 2+
         recall_color = QSetup.BLUE if self._page == 0 else QSetup.MAGENTA
-        self._send_led(QSetup.RECALL_LED_INDEX, recall_color)
+        self._set_led(QSetup.RECALL_LED_INDEX, recall_color)
 
     # ------------------------------------------------------------------
     # Pad input
@@ -130,6 +153,7 @@ class CMix:
             else:
                 self._song.view.selected_track = self._song.master_track
                 self._last_tap[15] = (now, self._song.master_track)
+                self.update_leds()
             return
 
         track = self._track_for_pad(pad_index)
@@ -145,6 +169,7 @@ class CMix:
             # First tap: select track
             self._song.view.selected_track = track
             self._last_tap[pad_index] = (now, track)
+            self.update_leds()
 
     # ------------------------------------------------------------------
     # Encoder input
