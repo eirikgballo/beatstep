@@ -8,12 +8,9 @@ Responsibilities:
     the selected track
   - Transpose encoder: control volume of the selected track
   - Shift+Recall: advance track page (wraps)
-  - LED management: reacts to track selection, solo, and track list changes
 """
 
 import time
-
-from . import QSetup
 
 # ---------------------------------------------------------------------------
 # Sensitivity constants  (calibrate against real hardware after deployment)
@@ -26,54 +23,15 @@ DOUBLE_TAP_MS = 0.400  # seconds
 
 class CMix:
 
-    def __init__(self, song, send_led, show_message):
+    def __init__(self, song, show_message):
         self._song         = song
-        self._send_led     = send_led       # fn(hw_index, color)
         self._show_message = show_message   # fn(text)
 
         self._page        = 0
         self._shift_held  = False
 
-        # LED state cache: only send sysex when color changes (BeatStep drops rapid bursts)
-        self._led_state = [None] * 17
-
         # Double-tap state: pad_index -> (timestamp, track)
         self._last_tap = {}
-
-        # Solo listeners: list of (track, listener_fn) to allow cleanup
-        self._solo_listeners = []
-
-        self._song.add_tracks_listener(self._on_tracks_changed)
-        self._song.view.add_selected_track_listener(self._on_selected_track_changed)
-        self._rebuild_solo_listeners()
-
-    # ------------------------------------------------------------------
-    # Listener management
-    # ------------------------------------------------------------------
-
-    def _rebuild_solo_listeners(self):
-        for track, fn in self._solo_listeners:
-            try:
-                track.remove_solo_listener(fn)
-            except Exception:
-                pass
-        self._solo_listeners = []
-        for track in self._song.tracks:
-            fn = self._make_solo_listener()
-            track.add_solo_listener(fn)
-            self._solo_listeners.append((track, fn))
-
-    def _make_solo_listener(self):
-        def _listener():
-            self.update_leds()
-        return _listener
-
-    def _on_tracks_changed(self):
-        self._rebuild_solo_listeners()
-        self.update_leds()
-
-    def _on_selected_track_changed(self):
-        self.update_leds()
 
     # ------------------------------------------------------------------
     # Track helpers
@@ -86,56 +44,6 @@ class CMix:
         if track_index < len(tracks):
             return tracks[track_index]
         return None
-
-    def _pad_color(self, pad_index):
-        """Return the LED color for a regular-track pad (0-14)."""
-        track = self._track_for_pad(pad_index)
-        if track is None:
-            return QSetup.OFF
-        selected = self._song.view.selected_track
-        if track == selected:
-            return QSetup.RED
-        if track.solo:
-            return QSetup.MAGENTA
-        return QSetup.BLUE
-
-    # ------------------------------------------------------------------
-    # LED update
-    # ------------------------------------------------------------------
-
-    def _set_led(self, index, color):
-        """Send LED sysex only if color has changed since last send."""
-        if self._led_state[index] != color:
-            self._led_state[index] = color
-            self._send_led(index, color)
-
-    def paint_led(self, index):
-        """Force-send the current desired color for one LED, bypassing the delta cache.
-        Used during the staggered initial paint from Beatstep_Q."""
-        if index == QSetup.RECALL_LED_INDEX:
-            color = QSetup.BLUE if self._page == 0 else QSetup.MAGENTA
-        elif index == 15:
-            master   = self._song.master_track
-            selected = self._song.view.selected_track
-            color = QSetup.RED if selected == master else QSetup.BLUE
-        else:
-            color = self._pad_color(index)
-        self._led_state[index] = color
-        self._send_led(index, color)
-
-    def update_leds(self):
-        # Pads 0-14: regular tracks
-        for i in range(15):
-            self._set_led(i, self._pad_color(i))
-
-        # Pad 15: master track
-        master   = self._song.master_track
-        selected = self._song.view.selected_track
-        self._set_led(15, QSetup.RED if selected == master else QSetup.BLUE)
-
-        # Recall button LED: blue on page 1, magenta on page 2+
-        recall_color = QSetup.BLUE if self._page == 0 else QSetup.MAGENTA
-        self._set_led(QSetup.RECALL_LED_INDEX, recall_color)
 
     # ------------------------------------------------------------------
     # Pad input
@@ -153,7 +61,6 @@ class CMix:
             else:
                 self._song.view.selected_track = self._song.master_track
                 self._last_tap[15] = (now, self._song.master_track)
-                self.update_leds()
             return
 
         track = self._track_for_pad(pad_index)
@@ -169,7 +76,6 @@ class CMix:
             # First tap: select track
             self._song.view.selected_track = track
             self._last_tap[pad_index] = (now, track)
-            self.update_leds()
 
     # ------------------------------------------------------------------
     # Encoder input
@@ -225,8 +131,6 @@ class CMix:
     def on_recall_press(self):
         if self._shift_held:
             self._advance_page()
-        else:
-            self.update_leds()
 
     # ------------------------------------------------------------------
     # Paging
@@ -236,7 +140,6 @@ class CMix:
         tracks   = self._song.tracks
         n_pages  = max(1, -(-len(tracks) // 15))  # ceil division
         self._page = (self._page + 1) % n_pages
-        self.update_leds()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -254,17 +157,4 @@ class CMix:
     # ------------------------------------------------------------------
 
     def cleanup(self):
-        try:
-            self._song.remove_tracks_listener(self._on_tracks_changed)
-        except Exception:
-            pass
-        try:
-            self._song.view.remove_selected_track_listener(self._on_selected_track_changed)
-        except Exception:
-            pass
-        for track, fn in self._solo_listeners:
-            try:
-                track.remove_solo_listener(fn)
-            except Exception:
-                pass
-        self._solo_listeners = []
+        pass

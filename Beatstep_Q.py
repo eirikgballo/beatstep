@@ -66,7 +66,6 @@ class Beatstep_Q(ControlSurface):
         try:
             self._cmix = CMix(
                 song         = self.song(),
-                send_led     = self._send_led,
                 show_message = self.show_message,
             )
             self.log_message('BeatStep_Q: CMix created OK')
@@ -89,7 +88,6 @@ class Beatstep_Q(ControlSurface):
         self.log_message('BeatStep_Q: disconnect')
         if self._cmix:
             self._cmix.cleanup()
-        self._clear_leds()
         ControlSurface.disconnect(self)
 
     def build_midi_map(self, midi_map_handle):
@@ -112,20 +110,14 @@ class Beatstep_Q(ControlSurface):
             self.log_message('BeatStep_Q: build_midi_map ERROR: %s' % str(e))
 
     # ------------------------------------------------------------------
-    # Hardware setup — two-stage: sysex first, LEDs 1.5s later
+    # Hardware setup
     # ------------------------------------------------------------------
 
     def _schedule_hardware_setup(self):
         self.log_message('BeatStep_Q: scheduling hardware setup')
         if self._hw_task is not None:
             self._hw_task.kill()
-        # Stagger initial LED paint: 1 LED per step, 0.15 s between each.
-        # BeatStep drops LED sysex when more than ~1 arrives in a 0.15 s window.
-        steps = [Task.wait(2.1), Task.run(self._send_setup_sysex), Task.wait(1.5)]
-        for i in range(16):
-            steps.append(Task.run(lambda idx=i: self._paint_led(idx)))
-            steps.append(Task.wait(0.15))
-        steps.append(Task.run(lambda: self._paint_led(QSetup.RECALL_LED_INDEX)))
+        steps = [Task.wait(2.1), Task.run(self._send_setup_sysex)]
         self._hw_task = self._task_group.add(Task.sequence(*steps))
 
     def _send_setup_sysex(self):
@@ -155,17 +147,6 @@ class Beatstep_Q(ControlSurface):
             self.log_message('BeatStep_Q: all sysex sent OK')
         except Exception as e:
             self.log_message('BeatStep_Q: ERROR in _send_setup_sysex: %s' % str(e))
-
-    def _paint_led(self, index):
-        """Paint one LED during the staggered initial sequence."""
-        if not self._cmix:
-            return
-        try:
-            self._cmix.paint_led(index)
-            if index == QSetup.RECALL_LED_INDEX:
-                self.log_message('BeatStep_Q: all LEDs painted')
-        except Exception as e:
-            self.log_message('BeatStep_Q: ERROR in _paint_led %d: %s' % (index, str(e)))
 
     # ------------------------------------------------------------------
     # MIDI receive
@@ -220,22 +201,3 @@ class Beatstep_Q(ControlSurface):
             self._cmix.on_recall_press()
             self._schedule_hardware_setup()  # re-configure after BeatStep firmware preset recall
 
-    # ------------------------------------------------------------------
-    # LED helpers
-    # ------------------------------------------------------------------
-
-    def _send_led(self, index, color):
-        """
-        Send LED color via sysex (cmd 0x10).
-        index 0-15: pad LED at hw_index = PAD_HW_OFFSET + index.
-        index == QSetup.RECALL_LED_INDEX (16): recall button at hw 0x5C.
-        """
-        if 0 <= index < 16:
-            self._send_midi(QSetup.set_led(index + QSetup.PAD_HW_OFFSET, color))
-        elif index == QSetup.RECALL_LED_INDEX:
-            self._send_midi(QSetup.set_led(QSetup.RECALL_HW_INDEX, color))
-
-    def _clear_leds(self):
-        for i in range(16):
-            self._send_midi(QSetup.set_led(i + QSetup.PAD_HW_OFFSET, QSetup.OFF))
-        self._send_midi(QSetup.set_led(QSetup.RECALL_HW_INDEX, QSetup.OFF))

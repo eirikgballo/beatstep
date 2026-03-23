@@ -12,7 +12,6 @@ CMD bytes (verified from raphaelquast reference / untergeek.de):
   0x04 = off / min value
   0x05 = on  / max value
   0x06 = behaviour  (pad: 0=toggle, 1=gate; encoder: 1-3=relative mode 1-3)
-  0x10 = LED color  (pads and function buttons)
 
 Pad mode values (cmd 0x01):
   8 = CC gate ("switched control")
@@ -27,22 +26,10 @@ Hardware index space (verified):
   Transpose enc  → hw = 0x30
   Recall button  → hw = 0x5C  (92)
   Shift button   → hw = 0x5E  (94)
-
-LED color values:
-  0  = off / black
-  1  = red
-  16 = blue
-  17 = magenta
 """
 
 _HEADER = (0xF0, 0x00, 0x20, 0x6B, 0x7F, 0x42, 0x02, 0x00)
 _FOOTER = (0xF7,)
-
-# LED colors
-OFF     = 0
-RED     = 1
-BLUE    = 16
-MAGENTA = 17
 
 # CMD bytes
 _CMD_MODE      = 0x01
@@ -51,7 +38,6 @@ _CMD_NUMBER    = 0x03  # CC or note number
 _CMD_OFF_VAL   = 0x04  # min / off value
 _CMD_ON_VAL    = 0x05  # max / on value
 _CMD_BEHAVIOUR = 0x06
-_CMD_COLOR     = 0x10  # LED color (pads and buttons)
 
 # Mode values
 _PAD_NOTE_GATE    = 9   # pads: note gate mode
@@ -72,21 +58,8 @@ _TRANSPOSE_HW_INDEX = 0x30   # transpose encoder
 RECALL_HW_INDEX     = 0x5C   # recall button (92)
 SHIFT_HW_INDEX      = 0x5E   # shift button  (94)
 
-# Sentinel for CMix to identify the recall LED (must be outside 0-15 pad range)
-RECALL_LED_INDEX = 16
-
-
 def _msg(cmd, index, value):
     return _HEADER + (cmd, index, value) + _FOOTER
-
-
-# ---------------------------------------------------------------------------
-# LED control (sysex cmd 0x10)
-# ---------------------------------------------------------------------------
-
-def set_led(hw_index, color):
-    """Set LED at hw_index to color. For pads use hw_index = pad_index + PAD_HW_OFFSET."""
-    return _msg(_CMD_COLOR, hw_index, color)
 
 
 # ---------------------------------------------------------------------------
