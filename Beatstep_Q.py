@@ -19,8 +19,8 @@ from .CMix import CMix
 # MIDI constants
 # ---------------------------------------------------------------------------
 
-# Pads send Note On/Off on CH10 (note gate mode).
-_STATUS_NOTE_ON_CH10  = 0x99   # 0x90 | 9
+# Pads send Note On — channel depends on hardware config; accept any channel.
+_NOTE_ON_MASK = 0x90
 
 # Encoders, transpose encoder, and function buttons send CC.
 # After sysex setup, all are on CH10. Before sysex (factory state), function
@@ -98,7 +98,8 @@ class Beatstep_Q(ControlSurface):
         try:
             h = self._c_instance.handle()
             for note in PAD_MSG_IDS:
-                Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
+                Live.MidiMap.forward_midi_note(h, midi_map_handle, 0, note)  # CH1
+                Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)  # CH10
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_ENCODER_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
@@ -166,7 +167,7 @@ class Beatstep_Q(ControlSurface):
         data1  = midi_bytes[1]
         data2  = midi_bytes[2]
 
-        if status == _STATUS_NOTE_ON_CH10:
+        if (status & 0xF0) == _NOTE_ON_MASK:
             self._handle_pad_note(data1, data2)
         elif status == _STATUS_CC_CH10:
             self._handle_cc(data1, data2)

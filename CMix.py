@@ -22,8 +22,8 @@ import time
 #   ENCODER_ACCELERATION: exponent applied to speed. 1.0 = linear (every click
 #                         the same size). 1.5 = fast turns are disproportionately
 #                         larger, giving fine control when slow + quick sweep when fast.
-ENCODER_SENSITIVITY   = 0.005
-ENCODER_ACCELERATION  = 1.5
+ENCODER_SENSITIVITY   = 1
+ENCODER_ACCELERATION  = 1
 
 DOUBLE_TAP_MS = 0.400  # seconds
 
