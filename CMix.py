@@ -11,17 +11,31 @@ import time
 
 DOUBLE_TAP_MS = 0.400  # seconds
 
-# Encoder acceleration: scales how much faster a fast spin moves a parameter
-# compared to a slow spin. Higher = more pronounced acceleration.
-# At 1.0 the curve is linear (same as before). At 2.0 it's quadratic (recommended
-# starting point). Try 1.5 for subtle, 3.0 for very aggressive.
-ENCODER_ACCELERATION = 3.0
+# ---------------------------------------------------------------------------
+# Encoder feel — edit these three values to tune acceleration behaviour.
+# ---------------------------------------------------------------------------
 
-# Step size range as a fraction of the parameter's full range per encoder tick.
-# MIN_STEP applies on the slowest spin; MAX_STEP on the fastest.
-# Raise MAX_STEP to sweep the full range in fewer turns; lower for finer control.
+# Minimum step per tick as a fraction of the parameter's full range.
+# Applied when turning very slowly. Lower = finer slow-turn resolution.
 ENCODER_MIN_STEP = 0.002
-ENCODER_MAX_STEP = 0.5 # 0.05 is too fine, need coarser/faster
+
+# Maximum step per tick as a fraction of the parameter's full range.
+# Applied when turning at full speed. Raise to sweep faster; lower for finer fast control.
+ENCODER_MAX_STEP = 0.05
+
+# Acceleration curve exponent. Controls how aggressively fast turns are boosted.
+#   1.0 = linear (no real acceleration — fast and slow feel the same)
+#   2.0 = quadratic (noticeable but gentle — good starting point)
+#   3.0 = aggressive (fast spin is very fast, slow spin is very fine)
+# The BeatStep always sends the same magnitude per tick regardless of speed, so
+# acceleration here is based on TIME between ticks: fast spin = short interval.
+ENCODER_ACCELERATION = 2.0
+
+# Tick interval thresholds (seconds). Ticks arriving faster than FAST_INTERVAL
+# get full MAX_STEP; ticks slower than SLOW_INTERVAL get only MIN_STEP.
+# Typical ranges: fast spin ~0.03–0.06 s/tick, slow spin ~0.2–0.5 s/tick.
+ENCODER_FAST_INTERVAL = 0.06   # s — at or below this → full speed
+ENCODER_SLOW_INTERVAL = 0.30   # s — at or above this → minimum speed
 
 
 class CMix:
@@ -39,6 +53,10 @@ class CMix:
 
         # Cached Audio Effect Rack on the selected track (None if not found).
         self._current_rack = None
+
+        # Last-tick timestamps for time-based encoder acceleration.
+        # Key: encoder index (0-15) or 'transpose'.
+        self._enc_last_tick = {}
 
         self._song.view.add_selected_track_listener(self._on_selected_track_changed)
         self._scan_rack()
@@ -65,20 +83,24 @@ class CMix:
                     return
         self._current_rack = None
 
-    @staticmethod
-    def _encoder_delta(value):
+    def _encoder_delta(self, key, value):
         """
-        Decode a relative mode-1 CC value into a signed, accelerated step.
-        Returns None for neutral values (0 or 64).
-        CW  (1–63):  positive delta, slow≈0.002, fast≈0.020
-        CCW (65–127): negative delta, same magnitude
+        Return a signed step fraction for a relative mode-2 CC value, or None if neutral.
+        Step magnitude is time-based: fast spin (ticks close together) → larger step.
+        key: encoder index 0-15, or 'transpose'.
         """
         if value == 0 or value == 64:
             return None
-        raw = value if value < 64 else -(128 - value)
-        magnitude = abs(raw)
-        step = ENCODER_MIN_STEP + ((magnitude / 63.0) ** ENCODER_ACCELERATION) * ENCODER_MAX_STEP
-        return step if raw > 0 else -step
+        direction = 1 if value < 64 else -1
+
+        now = time.time()
+        dt = now - self._enc_last_tick.get(key, now)
+        self._enc_last_tick[key] = now
+
+        span = ENCODER_SLOW_INTERVAL - ENCODER_FAST_INTERVAL
+        velocity = max(0.0, min(1.0, (ENCODER_SLOW_INTERVAL - dt) / span))
+        step = ENCODER_MIN_STEP + (velocity ** ENCODER_ACCELERATION) * ENCODER_MAX_STEP
+        return direction * step
 
     # ------------------------------------------------------------------
     # Track helpers
@@ -98,7 +120,7 @@ class CMix:
 
     def on_encoder(self, encoder_index, value):
         """Encoder 0–15 → macro 1–16 on the first Audio Effect Rack."""
-        delta = self._encoder_delta(value)
+        delta = self._encoder_delta(encoder_index, value)
         if delta is None:
             return
         if self._current_rack is None:
@@ -115,7 +137,7 @@ class CMix:
 
     def on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track."""
-        delta = self._encoder_delta(value)
+        delta = self._encoder_delta('transpose', value)
         if delta is None:
             return
         track = self._song.view.selected_track
