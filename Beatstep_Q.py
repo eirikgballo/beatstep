@@ -65,6 +65,7 @@ class Beatstep_Q(ControlSurface):
                 song                     = self.song(),
                 show_message             = self.show_message,
                 request_rebuild_midi_map = self.request_rebuild_midi_map,
+                send_midi                = self._send_midi,
             )
             self.log_message('BeatStep_Q: CMix created OK')
         except Exception as e:
@@ -147,6 +148,8 @@ class Beatstep_Q(ControlSurface):
 
             self.log_message('BeatStep_Q: all sysex sent OK')
             self.request_rebuild_midi_map()
+            if self._cmix:
+                self._cmix.update_leds()
         except Exception as e:
             self.log_message('BeatStep_Q: ERROR in _send_setup_sysex: %s' % str(e))
 

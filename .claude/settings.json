@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo:*)",
+      "Bash(curl -s https://api.github.com/repos/raphaelquast/beatstep/contents/)",
+      "Bash(python3 -c \"import json,sys; [print\\(f[''''name''''], f[''''type'''']\\) for f in json.load\\(sys.stdin\\)]\")"
+    ]
+  }
+}

@@ -59,8 +59,22 @@ _TRANSPOSE_HW_INDEX = 0x30   # transpose encoder
 RECALL_HW_INDEX     = 0x5C   # recall button (92)
 SHIFT_HW_INDEX      = 0x5E   # shift button  (94)
 
+_CMD_COLOR = 0x10
+
+COLOR_OFF     = 0
+COLOR_RED     = 1
+COLOR_BLUE    = 16
+COLOR_MAGENTA = 17
+
+
 def _msg(cmd, index, value):
     return _HEADER + (cmd, index, value) + _FOOTER
+
+
+def set_pad_color(pad_index, color):
+    """Return a sysex tuple to set the LED color of a pad (0-15)."""
+    hw = pad_index + PAD_HW_OFFSET
+    return _msg(_CMD_COLOR, hw, color)
 
 
 # ---------------------------------------------------------------------------

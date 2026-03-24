@@ -9,6 +9,8 @@ Responsibilities:
 
 import time
 
+from . import QSetup
+
 DOUBLE_TAP_MS = 0.400  # seconds
 
 # ---------------------------------------------------------------------------
@@ -52,10 +54,11 @@ TRANSPOSE_SLOW_INTERVAL = 0.25   # seconds: higher = longer to reach full speed,
 
 class CMix:
 
-    def __init__(self, song, show_message, request_rebuild_midi_map):
+    def __init__(self, song, show_message, request_rebuild_midi_map, send_midi):
         self._song                      = song
         self._show_message              = show_message
         self._request_rebuild_midi_map  = request_rebuild_midi_map
+        self._send_midi                 = send_midi
 
         self._page        = 0
         self._shift_held  = False
@@ -70,7 +73,12 @@ class CMix:
         # Key: encoder index (0-15) or 'transpose'.
         self._enc_last_tick = {}
 
+        # Tracks we have solo listeners on.
+        self._subscribed_tracks = []
+
         self._song.view.add_selected_track_listener(self._on_selected_track_changed)
+        self._song.add_tracks_listener(self._on_tracks_changed)
+        self._setup_solo_listeners()
         self._scan_rack()
 
     # ------------------------------------------------------------------
@@ -80,6 +88,14 @@ class CMix:
     def _on_selected_track_changed(self):
         self._scan_rack()
         self._request_rebuild_midi_map()
+        self.update_leds()
+
+    def _on_tracks_changed(self):
+        self._setup_solo_listeners()
+        self.update_leds()
+
+    def _on_solo_changed(self):
+        self.update_leds()
 
     # ------------------------------------------------------------------
     # Rack helpers
@@ -94,6 +110,45 @@ class CMix:
                     self._current_rack = device
                     return
         self._current_rack = None
+
+    def _setup_solo_listeners(self):
+        self._teardown_solo_listeners()
+        for track in self._song.tracks:
+            track.add_solo_listener(self._on_solo_changed)
+        self._subscribed_tracks = list(self._song.tracks)
+
+    def _teardown_solo_listeners(self):
+        for track in self._subscribed_tracks:
+            try:
+                track.remove_solo_listener(self._on_solo_changed)
+            except Exception:
+                pass
+        self._subscribed_tracks = []
+
+    # ------------------------------------------------------------------
+    # LED output
+    # ------------------------------------------------------------------
+
+    def update_leds(self):
+        selected = self._song.view.selected_track
+        master   = self._song.master_track
+
+        for pad_index in range(16):
+            if pad_index == 15:
+                track = master
+            else:
+                track = self._track_for_pad(pad_index)
+
+            if track is None:
+                color = QSetup.COLOR_OFF
+            elif track is selected:
+                color = QSetup.COLOR_RED
+            elif getattr(track, 'solo', False):
+                color = QSetup.COLOR_MAGENTA
+            else:
+                color = QSetup.COLOR_BLUE
+
+            self._send_midi(QSetup.set_pad_color(pad_index, color))
 
     def _encoder_delta(self, key, value, transpose=False):
         """
@@ -221,6 +276,7 @@ class CMix:
         tracks   = self._song.tracks
         n_pages  = max(1, -(-len(tracks) // 15))  # ceil division
         self._page = (self._page + 1) % n_pages
+        self.update_leds()
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -231,3 +287,8 @@ class CMix:
             self._song.view.remove_selected_track_listener(self._on_selected_track_changed)
         except Exception:
             pass
+        try:
+            self._song.remove_tracks_listener(self._on_tracks_changed)
+        except Exception:
+            pass
+        self._teardown_solo_listeners()
