@@ -178,10 +178,12 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 
 **Encoder CC assignment**: Encoders 0–15 are programmed to send CC 10–25 (encoder N → CC 10+N) on CH10 via `QSetup.setup_encoder` called from `_send_setup_sysex`. The transpose encoder is programmed to CC 26. None of these conflict with existing controls (SHIFT=CC 7, RECALL=CC 5). `build_midi_map` must forward CC 10–26 on CH10 so `receive_midi` is called.
 
-**Encoder relative value decoding**: BeatStep encoders in relative mode 1 send:
+**Encoder relative value decoding**: BeatStep encoders are configured in **relative mode 2 (two's complement)** (behaviour=2). Encoding:
 - CW (clockwise): raw value 1–63 → positive delta = raw value
-- CCW (counter-clockwise): raw value 65–127 → negative delta = -(128 − raw value)
-- Value 0 or 64 should be ignored (not produced in normal use)
+- CCW (counter-clockwise): raw value 65–127 → negative delta = -(128 − raw value) [two's complement: 65=−63, 127=−1]
+- Value 0 or 64 are ignored (neutral / not produced in normal use)
+
+> Mode 1 (signed bit) uses the inverse CCW encoding (65=−1, 127=−63) and would require a different decoder formula. Mode 2 matches the formula used in `_encoder_delta` and is also what the raphaelquast reference and Live's `relative_smooth_two_compliment` MapMode use.
 
 **Encoder acceleration**: Apply a gentle acceleration curve so that slow turns adjust finely and fast turns sweep larger ranges:
 ```
