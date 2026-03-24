@@ -21,7 +21,7 @@ ENCODER_ACCELERATION = 2.0
 # MIN_STEP applies on the slowest spin; MAX_STEP on the fastest.
 # Raise MAX_STEP to sweep the full range in fewer turns; lower for finer control.
 ENCODER_MIN_STEP = 0.002
-ENCODER_MAX_STEP = 0.2 # 0.05 is too fine, need coarser/faster
+ENCODER_MAX_STEP = 0.5 # 0.05 is too fine, need coarser/faster
 
 
 class CMix:
