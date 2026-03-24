@@ -15,7 +15,7 @@ DOUBLE_TAP_MS = 0.400  # seconds
 # compared to a slow spin. Higher = more pronounced acceleration.
 # At 1.0 the curve is linear (same as before). At 2.0 it's quadratic (recommended
 # starting point). Try 1.5 for subtle, 3.0 for very aggressive.
-ENCODER_ACCELERATION = 2.0
+ENCODER_ACCELERATION = 3.0
 
 # Step size range as a fraction of the parameter's full range per encoder tick.
 # MIN_STEP applies on the slowest spin; MAX_STEP on the fastest.
