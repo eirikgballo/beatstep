@@ -12,7 +12,7 @@ import time
 DOUBLE_TAP_MS = 0.400  # seconds
 
 # ---------------------------------------------------------------------------
-# Encoder feel — edit these three values to tune acceleration behaviour.
+# Macro encoder feel (the 16 knobs → Audio Effect Rack macros)
 # ---------------------------------------------------------------------------
 
 # Minimum step per tick as a fraction of the parameter's full range.
@@ -38,6 +38,16 @@ ENCODER_ACCELERATION = 2.0
 # sluggish, raise it if acceleration kicks in too easily.
 ENCODER_FAST_INTERVAL = 0.06   # s — at or below this → full speed
 ENCODER_SLOW_INTERVAL = 0.30   # s — at or above this → minimum speed
+
+# ---------------------------------------------------------------------------
+# Transpose encoder feel (large knob → volume of selected track)
+# ---------------------------------------------------------------------------
+
+TRANSPOSE_MIN_STEP      = 0.005  # larger min than macros for a smoother, less laggy feel
+TRANSPOSE_MAX_STEP      = 0.08
+TRANSPOSE_ACCELERATION  = 1.5    # gentler curve — volume should feel linear-ish
+TRANSPOSE_FAST_INTERVAL = 0.05   # s — tighter window so fast spins register sooner
+TRANSPOSE_SLOW_INTERVAL = 0.25   # s
 
 
 class CMix:
@@ -85,11 +95,12 @@ class CMix:
                     return
         self._current_rack = None
 
-    def _encoder_delta(self, key, value):
+    def _encoder_delta(self, key, value, transpose=False):
         """
         Return a signed step fraction for a relative mode-2 CC value, or None if neutral.
         Step magnitude is time-based: fast spin (ticks close together) → larger step.
         key: encoder index 0-15, or 'transpose'.
+        transpose: use the transpose encoder constants instead of the macro constants.
         """
         if value == 0 or value == 64:
             return None
@@ -99,9 +110,15 @@ class CMix:
         dt = now - self._enc_last_tick.get(key, now)
         self._enc_last_tick[key] = now
 
-        span = ENCODER_SLOW_INTERVAL - ENCODER_FAST_INTERVAL
-        velocity = max(0.0, min(1.0, (ENCODER_SLOW_INTERVAL - dt) / span))
-        step = ENCODER_MIN_STEP + (velocity ** ENCODER_ACCELERATION) * ENCODER_MAX_STEP
+        if transpose:
+            fast, slow = TRANSPOSE_FAST_INTERVAL, TRANSPOSE_SLOW_INTERVAL
+            min_step, max_step, accel = TRANSPOSE_MIN_STEP, TRANSPOSE_MAX_STEP, TRANSPOSE_ACCELERATION
+        else:
+            fast, slow = ENCODER_FAST_INTERVAL, ENCODER_SLOW_INTERVAL
+            min_step, max_step, accel = ENCODER_MIN_STEP, ENCODER_MAX_STEP, ENCODER_ACCELERATION
+
+        velocity = max(0.0, min(1.0, (slow - dt) / (slow - fast)))
+        step = min_step + (velocity ** accel) * max_step
         return direction * step
 
     # ------------------------------------------------------------------
@@ -139,9 +156,10 @@ class CMix:
 
     def on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track."""
-        delta = self._encoder_delta('transpose', value)
+        delta = self._encoder_delta('transpose', value, transpose=True)
         if delta is None:
             return
+        delta = -delta
         track = self._song.view.selected_track
         if track is None:
             return
