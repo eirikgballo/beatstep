@@ -22,7 +22,7 @@ The Arturia BeatStep has the following physical controls:
 |--------------------|-----------------------------------------------|-------------------------------------|
 | Pads (16)          | Pad 1–8 (top row), Pad 9–16 (bottom row)      | Note, CH10, IDs from `PAD_MSG_IDS`  |
 | Encoders (16)      | Knobs 1–16 (left→right)                       | CC, CH10, CC 10–25 (set via sysex)  |
-| Transpose encoder  | Large knob (top-left)                         | CC, CH10, CC 26 (set via sysex)     |
+| Transpose encoder  | Large knob (top-left)                         | CC, CH10, CC 27 (set via sysex)     |
 | Function buttons   | `play`, `stop`, `cntrl`, `shift`, `chan`, `store`, `recall` | CC, CH10 |
 
 > **Note on pad numbering:** "Pad 1–8" always refers to the **top row** of physical pads. The bottom row is "Pad 9–16". Within this codebase, top row = indices 0–7, bottom row = indices 8–15.
@@ -176,7 +176,7 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 
 **Feature scope**: Mix Mode only. `play`, `stop`, `chan`, `store`, `cntrl` have no function in the current implementation.
 
-**Encoder CC assignment**: Encoders 0–15 are programmed to send CC 10–25 (encoder N → CC 10+N) on CH10 via `QSetup.setup_encoder` called from `_send_setup_sysex`. The transpose encoder is programmed to CC 26. None of these conflict with existing controls (SHIFT=CC 7, RECALL=CC 5). `build_midi_map` must forward CC 10–26 on CH10 so `receive_midi` is called.
+**Encoder CC assignment**: Encoders 0–15 are programmed to send CC 10–25 (encoder N → CC 10+N) on CH10 via `QSetup.setup_encoder` called from `_send_setup_sysex`. The transpose encoder is programmed to CC 27. None of these conflict with existing controls (SHIFT=CC 7, RECALL=CC 5). `build_midi_map` must forward CC 10–25 and CC 27 on CH10 so `receive_midi` is called.
 
 **Encoder relative value decoding**: BeatStep encoders are configured in **relative mode 2 (two's complement)** (behaviour=2). Encoding:
 - CW (clockwise): raw value 1–63 → positive delta = raw value

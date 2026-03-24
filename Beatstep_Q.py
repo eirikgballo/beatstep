@@ -35,7 +35,7 @@ BTN_RECALL_CC = 5
 # Encoder CC numbers (programmed via sysex on every connection).
 # Encoders 0–15 → CC 10–25; transpose encoder → CC 26.
 ENCODER_CC_BASE  = 10
-TRANSPOSE_CC     = 26
+TRANSPOSE_CC     = 27
 
 # Note numbers programmed into the hardware via sysex (note gate mode).
 # Physical layout (column-major in hardware): indices 0-3 = column 1, etc.
