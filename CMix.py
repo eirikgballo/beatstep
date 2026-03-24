@@ -23,7 +23,7 @@ ENCODER_MIN_STEP = 0.002
 
 # Maximum step per tick as a fraction of the parameter's full range.
 # Applied when turning at full speed. Raise to sweep faster; lower for finer fast control.
-ENCODER_MAX_STEP = 0.05
+ENCODER_MAX_STEP = 0.02 # tried 0.05 = good but a bit fast maybe
 
 # Acceleration curve exponent. Controls how aggressively fast turns are boosted.
 #   1.0 = linear (no real acceleration — fast and slow feel the same)
@@ -38,7 +38,7 @@ ENCODER_ACCELERATION = 2.0
 # Typical ranges: fast spin ~0.03–0.06 s/tick, slow spin ~0.2–0.5 s/tick.
 # FAST_INTERVAL is the most impactful constant: lower it if fast spins feel
 # sluggish, raise it if acceleration kicks in too easily.
-ENCODER_FAST_INTERVAL = 0.06   # s — at or below this → full speed
+ENCODER_FAST_INTERVAL = 0.08   # s — at or below this → full speed
 ENCODER_SLOW_INTERVAL = 0.30   # s — at or above this → minimum speed
 
 # ---------------------------------------------------------------------------
