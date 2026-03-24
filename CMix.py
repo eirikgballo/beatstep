@@ -43,11 +43,11 @@ ENCODER_SLOW_INTERVAL = 0.30   # s — at or above this → minimum speed
 # Transpose encoder feel (large knob → volume of selected track)
 # ---------------------------------------------------------------------------
 
-TRANSPOSE_MIN_STEP      = 0.005  # larger min than macros for a smoother, less laggy feel
-TRANSPOSE_MAX_STEP      = 0.08
-TRANSPOSE_ACCELERATION  = 1.5    # gentler curve — volume should feel linear-ish
-TRANSPOSE_FAST_INTERVAL = 0.05   # s — tighter window so fast spins register sooner
-TRANSPOSE_SLOW_INTERVAL = 0.25   # s
+TRANSPOSE_MIN_STEP      = 0.005  # constant step per tick (~0.2 dB)
+TRANSPOSE_MAX_STEP      = 0.02   # 0.02 = 0.8 dB per tick at max speed
+TRANSPOSE_ACCELERATION  = 1.5
+TRANSPOSE_FAST_INTERVAL = 0.08   # seconds: higher = less aggressive acceleration, lower = more aggressive
+TRANSPOSE_SLOW_INTERVAL = 0.25   # seconds: higher = longer to reach full speed, lower = quicker to reach full speed
 
 
 class CMix:
