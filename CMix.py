@@ -159,7 +159,6 @@ class CMix:
         delta = self._encoder_delta('transpose', value, transpose=True)
         if delta is None:
             return
-        delta = -delta
         track = self._song.view.selected_track
         if track is None:
             return
