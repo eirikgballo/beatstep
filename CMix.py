@@ -11,6 +11,18 @@ import time
 
 DOUBLE_TAP_MS = 0.400  # seconds
 
+# Encoder acceleration: scales how much faster a fast spin moves a parameter
+# compared to a slow spin. Higher = more pronounced acceleration.
+# At 1.0 the curve is linear (same as before). At 2.0 it's quadratic (recommended
+# starting point). Try 1.5 for subtle, 3.0 for very aggressive.
+ENCODER_ACCELERATION = 2.0
+
+# Step size range as a fraction of the parameter's full range per encoder tick.
+# MIN_STEP applies on the slowest spin; MAX_STEP on the fastest.
+# Raise MAX_STEP to sweep the full range in fewer turns; lower for finer control.
+ENCODER_MIN_STEP = 0.002
+ENCODER_MAX_STEP = 0.05
+
 
 class CMix:
 
@@ -65,7 +77,7 @@ class CMix:
             return None
         raw = value if value < 64 else -(128 - value)
         magnitude = abs(raw)
-        step = 0.002 + (magnitude / 63.0) * 0.018
+        step = ENCODER_MIN_STEP + ((magnitude / 63.0) ** ENCODER_ACCELERATION) * ENCODER_MAX_STEP
         return step if raw > 0 else -step
 
     # ------------------------------------------------------------------
