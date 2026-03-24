@@ -55,7 +55,7 @@ The Arturia BeatStep has the following physical controls:
 | Control | Action |
 |---------|--------|
 | Encoder 1–16 (knobs, left→right) | Control macro 1–16 on the first Audio Effect Rack found in the selected track's device chain. Encoders run in relative mode 1 (CW=1–63, CCW=65–127). Acceleration is applied: slow spin ≈ 0.002/tick, fast spin ≈ 0.02/tick. If the selected track has no Audio Effect Rack, turning any encoder shows a status bar message. If the rack has fewer than 16 macros, encoders beyond the available count show a status bar message. No status bar message is shown on successful macro adjustment. |
-| Transpose encoder (large knob) | Controls the **volume** of the currently selected track. Same relative mode 1 and acceleration curve as the 16 encoders. Clamped to `[0.0, 1.0]`. Always active — no mode dependency. |
+| Transpose encoder (large knob) | Controls the **volume** of the currently selected track. Same relative mode 2 and acceleration curve as the 16 encoders. Clamped to `[vol.min, vol.max]`. Always active — no mode dependency. |
 | Pad 1–8 (top row, left→right) | Select regular track 1–8 on the current page. LED: red if selected, magenta if soloed, blue if exists, black if no track. |
 | Pad 9–15 (bottom row, left→right, first 7) | Select regular track 9–15 on the current page. Same LED rules. |
 | Pad 16 (bottom-right) | Always selects the **master track**, regardless of page. LED: red if selected, blue always (master always exists). |
@@ -192,7 +192,7 @@ magnitude = abs(raw_delta)
 step = 0.002 + (magnitude / 63.0) * 0.018   # range: 0.002 (slow) to 0.020 (fast)
 delta = step if raw_delta > 0 else -step
 ```
-Clamp the resulting parameter value to `[0.0, 1.0]` before assigning.
+The delta is a **fraction of the parameter's full range** — multiply by `param.max - param.min` and clamp to `[param.min, param.max]`. Macro parameters have a native range of 0–127, not 0–1; clamping to `[0.0, 1.0]` would instantly collapse any macro to near-minimum.
 
 **Rack binding in CMix**: `CMix` caches the current Audio Effect Rack in `_current_rack`. This cache is refreshed whenever the selected track changes (`_on_selected_track_changed`). The scan iterates `song.view.selected_track.devices` and picks the first device whose `class_name == "AudioEffectGroupDevice"`. If none is found, `_current_rack` is set to `None`. The cache is also invalidated on track change even if the same track somehow re-fires the listener.
 

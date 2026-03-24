@@ -98,7 +98,8 @@ class CMix:
             self._show_message('Macro %d not available' % (encoder_index + 1))
             return
         param = params[macro_index]
-        param.value = max(0.0, min(1.0, param.value + delta))
+        span = param.max - param.min
+        param.value = max(param.min, min(param.max, param.value + delta * span))
 
     def on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track."""
@@ -109,7 +110,8 @@ class CMix:
         if track is None:
             return
         vol = track.mixer_device.volume
-        vol.value = max(0.0, min(1.0, vol.value + delta))
+        span = vol.max - vol.min
+        vol.value = max(vol.min, min(vol.max, vol.value + delta * span))
 
     # ------------------------------------------------------------------
     # Pad input
