@@ -12,9 +12,6 @@ before any code is written. The code should follow this document, not the other 
 - The original repo [raphaelquast/beatstep](https://github.com/raphaelquast/beatstep) (docs at https://raphaelquast.github.io/beatstep/) is a useful reference for patterns around sysex scheduling, hardware setup, and general MIDI Remote Script structure for the BeatStep. This implementation is deliberately narrower in scope.
 - **Mix Mode**: Script boots directly into Mix Mode. The RECALL button is continuously lit **blue** to signal that Mix Mode is active.
 - **Mix Mode Pad Functions**: Pads 1–15 select regular tracks (top row = tracks 1–8, bottom row left-to-right = tracks 9–15). Pad 16 (bottom-right) always selects the **master track**. Selected pad lights **red**. Double-tap a pad to toggle **solo** on the associated track.
-- **Mix Mode Encoder Functions**: Encoders 1–16 control macros 1–16 of the Audio Effect Rack on the currently selected track.
-- **Transpose Encoder**: Always controls the volume of the currently selected track.
-
 ---
 
 ## 2. Hardware Reference
@@ -23,27 +20,14 @@ The Arturia BeatStep has the following physical controls:
 
 | Group              | Controls                                      | MIDI mapping                        |
 |--------------------|-----------------------------------------------|-------------------------------------|
-| Pads (16)          | Pad 1–8 (top row), Pad 9–16 (bottom row)      | CC, CH10, IDs from `PAD_MSG_IDS`    |
-| Encoders (16)      | Encoder 1–16                                  | CC, CH10, IDs from `ENCODER_MSG_IDS`; **relative mode 2** |
-| Transpose encoder  | Single rotary at top-left                     | CC 4, CH10, **relative mode 2**     |
+| Pads (16)          | Pad 1–8 (top row), Pad 9–16 (bottom row)      | Note, CH10, IDs from `PAD_MSG_IDS`  |
+| Encoders (16)      | Knobs 1–16 (left→right)                       | CC, CH10, CC 10–25 (set via sysex)  |
+| Transpose encoder  | Large knob (top-left)                         | CC, CH10, CC 26 (set via sysex)     |
 | Function buttons   | `play`, `stop`, `cntrl`, `shift`, `chan`, `store`, `recall` | CC, CH10 |
 
 > **Note on pad numbering:** "Pad 1–8" always refers to the **top row** of physical pads. The bottom row is "Pad 9–16". Within this codebase, top row = indices 0–7, bottom row = indices 8–15.
 >
-> The CC IDs in `PAD_MSG_IDS` (44–51 for the top row, 36–43 for the bottom row) are **explicitly programmed into the hardware** by `_setup_hardware` via `set_B_cc` sysex on every connection — the same way encoder CC IDs are set. Any prior hardware configuration (e.g. from Arturia MIDI Control Center) is overwritten. `PAD_MSG_IDS` is the authoritative source.
-
-### Encoder relative mode (mode 2)
-
-The BeatStep sends relative values around the centre point 64:
-
-| Raw CC value | Meaning            |
-|--------------|--------------------|
-| 65           | +1 step clockwise  |
-| 63           | -1 step counter-clockwise |
-| 66, 67, …    | larger CW increment (faster spin) |
-| 62, 61, …    | larger CCW increment (faster spin) |
-
-The script reads these raw values directly in `receive_midi` and converts them to parameter delta moves.
+> The CC IDs in `PAD_MSG_IDS` (44–51 for the top row, 36–43 for the bottom row) are **explicitly programmed into the hardware** by `_setup_hardware` via `set_B_cc` sysex on every connection. Any prior hardware configuration (e.g. from Arturia MIDI Control Center) is overwritten. `PAD_MSG_IDS` is the authoritative source.
 
 ### Pad LED colors (sysex, via QSetup)
 
@@ -70,13 +54,13 @@ The script reads these raw values directly in `receive_midi` and converts them t
 
 | Control | Action |
 |---------|--------|
+| Encoder 1–16 (knobs, left→right) | Control macro 1–16 on the first Audio Effect Rack found in the selected track's device chain. Encoders run in relative mode 1 (CW=1–63, CCW=65–127). Acceleration is applied: slow spin ≈ 0.002/tick, fast spin ≈ 0.02/tick. If the selected track has no Audio Effect Rack, turning any encoder shows a status bar message. If the rack has fewer than 16 macros, encoders beyond the available count show a status bar message. No status bar message is shown on successful macro adjustment. |
+| Transpose encoder (large knob) | Controls the **volume** of the currently selected track. Same relative mode 1 and acceleration curve as the 16 encoders. Clamped to `[0.0, 1.0]`. Always active — no mode dependency. |
 | Pad 1–8 (top row, left→right) | Select regular track 1–8 on the current page. LED: red if selected, magenta if soloed, blue if exists, black if no track. |
 | Pad 9–15 (bottom row, left→right, first 7) | Select regular track 9–15 on the current page. Same LED rules. |
 | Pad 16 (bottom-right) | Always selects the **master track**, regardless of page. LED: red if selected, blue always (master always exists). |
 | Single-tap pad | Selects the associated track (exclusive — only one pad is red at a time). The previously selected pad returns to blue or magenta depending on its solo state. |
 | Double-tap pad (≤ 400 ms between taps) | The **first tap** selects the track (as above). The **second tap** toggles solo on that track. Solo is additive — multiple tracks can be soloed simultaneously. Double-tapping a soloed track turns solo off. Double-tapping **pad 16** (master track) shows status bar: `"Master can't be solo'ed"` and does nothing else. A double-tap **always requires two taps in sequence** — tapping an already-selected pad resets the gesture timer, so a second tap within 400 ms is still needed to toggle solo. |
-| Encoders 1–16 | Control macro 1–16 of the first Audio Effect Rack on the **currently selected track**. Status bar messages: "No rack on track" (shown on every turn when no rack exists); "Nothing assigned to macro N" (shown on every turn when the rack has fewer than N macros). |
-| Transpose encoder | Controls the **volume** of the currently selected track. Always active, regardless of pad selection. |
 | `recall` | Mix Mode indicator — lit **blue** continuously. Pressing `recall` repaints all LEDs. On page 2+, pressing `recall` alone repaints without changing page. |
 | `shift` + `recall` | Advance to the next track page (+15 regular tracks). From the last page, wraps back to page 1. |
 | `play` | No function (reserved). |
@@ -159,8 +143,10 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 | `Song.tracks` / `add_tracks_listener` | Regular tracks list; react to tracks being added or removed | 9+ |
 | `Song.master_track` | Master track object for pad 16 | 9+ |
 | `track.solo` / `add_solo_listener` | Solo state read, write, and real-time LED feedback | 9+ |
-| `track.mixer_device.volume` | Transpose encoder → selected track volume | 9+ |
-| `device.parameters` | Encoder → macro parameter value control | 9+ |
+| `track.devices` | Device chain; scan for first Audio Effect Rack on track change | 9+ |
+| `device.class_name == "AudioEffectGroupDevice"` | Identify an Audio Effect Rack in the device chain | 9+ |
+| `device.parameters` | Macro parameter list on the Audio Effect Rack (indices 1–16 are macros 1–16; index 0 is the device on/off toggle) | 9+ |
+| `parameter.value` / `parameter.min` / `parameter.max` | Read and write macro values | 9+ |
 
 > Return tracks (`Song.return_tracks`) are **not used** in this implementation.
 
@@ -178,17 +164,6 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 
 **Disconnect cleanup**: On disconnect (`disconnect()` or `port_settings_changed` when port is lost), send all-black to all pad LEDs.
 
-**Encoder relative mode**: All 16 encoders and the transpose encoder use relative mode 2. Raw CC value 65 = +1, 63 = −1; values further from 64 = larger delta. The script maps these directly to parameter value changes in `receive_midi`.
-
-**Encoder → macro assignment**: Encoder N controls macro N of the **first** Audio Effect Rack found on the selected track (searching `track.devices`). On every encoder turn:
-- If no rack found → status bar: `"No rack on track"`
-- If rack has fewer than N macros → status bar: `"Nothing assigned to macro N"`
-- Otherwise → adjust `device.parameters[N]` by the encoder delta (`parameters[0]` is Device On; macros are at indices 1–16, so encoder N maps to `parameters[N]`)
-
-**Encoder sensitivity**: One click (raw delta = 1) moves the parameter by `(1 / ENCODER_CLICKS_PER_ROTATION) * ENCODER_SENSITIVITY`. The goal is that one full 360° rotation covers the full parameter range (0.0–1.0). `ENCODER_CLICKS_PER_ROTATION` defaults to `24` (placeholder — calibrate against real hardware after deployment). `ENCODER_SENSITIVITY` defaults to `1.0` and acts as a multiplier for fine-tuning — increase it to make encoders faster, decrease to make them slower. Both constants are defined in one place so sensitivity can be adjusted without touching logic code. The transpose encoder (volume) uses the same two constants.
-
-**Transpose encoder → volume**: Always acts on `Song.view.selected_track.mixer_device.volume`. No mode dependency.
-
 **Double-tap detection**: The first tap of a double-tap gesture **does** select the track (LED changes to red immediately). If a second tap arrives within 400 ms, solo is toggled on that track. A single tap never triggers solo.
 
 **Track paging**: `CMix` maintains a `_page` integer (0-indexed). Pads 1–15 map to `Song.tracks[page*15 + pad_index]`. Pad 16 always maps to `Song.master_track`. Page advances on `shift`+`recall` (wraps). The `recall` LED reflects the current page (blue = page 1, magenta = page 2+). If tracks are added or removed such that the current page has no tracks, the script stays on the current page and all pads 1–15 show black. If the currently selected track belongs to a page other than the active page, no pad shows red on the current page — the Live selection is preserved, but LED feedback for it is simply absent until the user navigates back to that track's page.
@@ -200,6 +175,28 @@ BeatStep_Q  — ControlSurface subclass; hardware setup, sysex scheduling, MIDI 
 **Track selection model**: Only `Song.tracks` (regular tracks) and `Song.master_track` are addressable. Return tracks are excluded.
 
 **Feature scope**: Mix Mode only. `play`, `stop`, `chan`, `store`, `cntrl` have no function in the current implementation.
+
+**Encoder CC assignment**: Encoders 0–15 are programmed to send CC 10–25 (encoder N → CC 10+N) on CH10 via `QSetup.setup_encoder` called from `_send_setup_sysex`. The transpose encoder is programmed to CC 26. None of these conflict with existing controls (SHIFT=CC 7, RECALL=CC 5). `build_midi_map` must forward CC 10–26 on CH10 so `receive_midi` is called.
+
+**Encoder relative value decoding**: BeatStep encoders in relative mode 1 send:
+- CW (clockwise): raw value 1–63 → positive delta = raw value
+- CCW (counter-clockwise): raw value 65–127 → negative delta = -(128 − raw value)
+- Value 0 or 64 should be ignored (not produced in normal use)
+
+**Encoder acceleration**: Apply a gentle acceleration curve so that slow turns adjust finely and fast turns sweep larger ranges:
+```
+raw_delta = value if value < 64 else -(128 - value)
+magnitude = abs(raw_delta)
+step = 0.002 + (magnitude / 63.0) * 0.018   # range: 0.002 (slow) to 0.020 (fast)
+delta = step if raw_delta > 0 else -step
+```
+Clamp the resulting parameter value to `[0.0, 1.0]` before assigning.
+
+**Rack binding in CMix**: `CMix` caches the current Audio Effect Rack in `_current_rack`. This cache is refreshed whenever the selected track changes (`_on_selected_track_changed`). The scan iterates `song.view.selected_track.devices` and picks the first device whose `class_name == "AudioEffectGroupDevice"`. If none is found, `_current_rack` is set to `None`. The cache is also invalidated on track change even if the same track somehow re-fires the listener.
+
+**Macro parameter indexing**: `device.parameters` on an Audio Effect Rack includes index 0 (device on/off) followed by the macro parameters. Macro N (1-indexed) is at `device.parameters[N]`. The rack always has exactly 16 macro parameter slots regardless of how many are visible in the UI; hidden macros still accept value writes. If a macro slot does not exist (e.g. `N >= len(device.parameters)`), show a status bar message.
+
+**MIDI map rebuild on track change**: After refreshing `_current_rack` in `_on_selected_track_changed`, call `request_rebuild_midi_map()` so that Live re-runs `build_midi_map`. This is already called; encoder CC forwarding is static and does not need to change per-track.
 
 **Function button CC IDs (confirmed)**: Function buttons send CC on **CH10** (same channel as pads and encoders). Confirmed values: `shift` = CC 7, `recall` = CC 5. The CC value is 127 on press, 0 on release. Before the script's sysex runs (factory state), buttons may temporarily send on CH1 — the script handles both channels defensively in `_handle_function_button`.
 
@@ -215,11 +212,15 @@ def build_midi_map(self, midi_map_handle):
     h = self._c_instance.handle()
     for note in PAD_MSG_IDS:
         Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)
-    for cc in ENCODER_MSG_IDS:
-        Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
     # ... etc for all other CCs
 ```
 
-Also call `self.request_rebuild_midi_map()` at the end of `__init__` to ensure Live triggers the MIDI map build on the first load. Without this, `build_midi_map` may not be called during the initial startup, `receive_midi` never fires, and all pad/encoder input is silently ignored. This was the root cause of pads not selecting tracks.
+### Todo
 
-**Pad note numbers — factory defaults are correct**: The BeatStep factory preset already assigns notes 44–51 (top row) and 36–43 (bottom row) to pads — matching `PAD_MSG_IDS`. There is no need to set the note number via sysex. Only mode (9 = note gate), channel (9 = CH10), and behaviour (1 = gate) need to be sent (3 sysex messages per pad, not 6).
+- [ ] Add encoder sysex setup to `_send_setup_sysex` in `Beatstep_Q.py` (call `QSetup.setup_encoder(i, 10+i)` for i in 0–15)
+- [ ] Forward CC 10–25 on CH10 in `build_midi_map` in `Beatstep_Q.py`
+- [ ] Route incoming CC 10–25 to `CMix.on_encoder(encoder_index, value)` in `_handle_cc`
+- [ ] Implement `_current_rack` caching and rack scan in `CMix` (`_on_selected_track_changed` already triggers `request_rebuild_midi_map`)
+- [ ] Implement `CMix.on_encoder(encoder_index, value)` with relative decoding, acceleration, macro write, and error messages
+- [ ] Update hardware reference note (`PAD_MSG_IDS` note) to add an equivalent note for encoder CC IDs
+

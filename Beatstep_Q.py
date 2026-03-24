@@ -22,7 +22,7 @@ from .CMix import CMix
 # Pads send Note On — channel depends on hardware config; accept any channel.
 _NOTE_ON_MASK = 0x90
 
-# Encoders, transpose encoder, and function buttons send CC.
+# Function buttons send CC.
 # After sysex setup, all are on CH10. Before sysex (factory state), function
 # buttons may be on CH1, so we handle both.
 _STATUS_CC_CH10 = 0xB9  # 0xB0 | 9
@@ -32,6 +32,11 @@ _STATUS_CC_CH1  = 0xB0
 BTN_SHIFT_CC  = 7
 BTN_RECALL_CC = 5
 
+# Encoder CC numbers (programmed via sysex on every connection).
+# Encoders 0–15 → CC 10–25; transpose encoder → CC 26.
+ENCODER_CC_BASE  = 10
+TRANSPOSE_CC     = 26
+
 # Note numbers programmed into the hardware via sysex (note gate mode).
 # Physical layout (column-major in hardware): indices 0-3 = column 1, etc.
 PAD_MSG_IDS = [
@@ -39,16 +44,8 @@ PAD_MSG_IDS = [
     36, 37, 38, 39, 40, 41, 42, 43,   # hw 0x78–0x7F
 ]
 
-ENCODER_MSG_IDS = [
-    10, 11, 12, 13, 14, 15, 16, 17,
-    18, 19, 20, 21, 22, 23, 24, 25,
-]
-
-TRANSPOSE_ENCODER_CC = 4
-
-# Reverse-lookup maps built once at import time for O(1) dispatch.
-_PAD_NOTE_TO_INDEX    = {note: i for i, note in enumerate(PAD_MSG_IDS)}
-_ENCODER_CC_TO_INDEX  = {cc: i   for i, cc   in enumerate(ENCODER_MSG_IDS)}
+# Reverse-lookup map built once at import time for O(1) dispatch.
+_PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
 
 
 # ---------------------------------------------------------------------------
@@ -100,13 +97,13 @@ class Beatstep_Q(ControlSurface):
             for note in PAD_MSG_IDS:
                 Live.MidiMap.forward_midi_note(h, midi_map_handle, 0, note)  # CH1
                 Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)  # CH10
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_ENCODER_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
-            for cc in ENCODER_MSG_IDS:
-                Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, cc)
+            for i in range(16):
+                Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, ENCODER_CC_BASE + i)
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_CC)
             self.log_message('BeatStep_Q: MIDI map built OK')
         except Exception as e:
             self.log_message('BeatStep_Q: build_midi_map ERROR: %s' % str(e))
@@ -125,7 +122,7 @@ class Beatstep_Q(ControlSurface):
     def _send_setup_sysex(self):
         self.log_message('BeatStep_Q: _send_setup_sysex running')
         try:
-            # Pads only: mode=9 (note gate), channel=CH10, behaviour=gate.
+            # Pads: mode=9 (note gate), channel=CH10, behaviour=gate.
             # Note numbers are NOT re-configured — factory defaults match PAD_MSG_IDS.
             for i in range(16):
                 for msg in QSetup.setup_pad(i):
@@ -133,17 +130,19 @@ class Beatstep_Q(ControlSurface):
 
             self.log_message('BeatStep_Q: pad sysex sent (%d pads, 3 msgs each)' % 16)
 
-            for i, cc in enumerate(ENCODER_MSG_IDS):
-                for msg in QSetup.setup_encoder(i, cc):
-                    self._send_midi(msg)
-
-            for msg in QSetup.setup_transpose_encoder(TRANSPOSE_ENCODER_CC):
-                self._send_midi(msg)
-
             for msg in QSetup.setup_button(QSetup.RECALL_HW_INDEX):
                 self._send_midi(msg)
 
             for msg in QSetup.setup_button(QSetup.SHIFT_HW_INDEX):
+                self._send_midi(msg)
+
+            # Encoders: relative mode 1, CH10, CC 10–25.
+            for i in range(16):
+                for msg in QSetup.setup_encoder(i, ENCODER_CC_BASE + i):
+                    self._send_midi(msg)
+
+            # Transpose encoder: relative mode 1, CH10, CC 26.
+            for msg in QSetup.setup_transpose_encoder(TRANSPOSE_CC):
                 self._send_midi(msg)
 
             self.log_message('BeatStep_Q: all sysex sent OK')
@@ -183,14 +182,13 @@ class Beatstep_Q(ControlSurface):
             self._cmix.on_pad_press(idx)
 
     def _handle_cc(self, cc, value):
-        """Handle CC CH10 — encoders, transpose encoder, and function buttons."""
-        if cc == TRANSPOSE_ENCODER_CC:
-            self._cmix.on_transpose_turn(value)
-            return
-        if cc in _ENCODER_CC_TO_INDEX:
-            self._cmix.on_encoder_turn(_ENCODER_CC_TO_INDEX[cc], value)
-            return
-        self._handle_function_button(cc, value)
+        """Handle CC CH10 — encoders and function buttons."""
+        if ENCODER_CC_BASE <= cc < ENCODER_CC_BASE + 16:
+            self._cmix.on_encoder(cc - ENCODER_CC_BASE, value)
+        elif cc == TRANSPOSE_CC:
+            self._cmix.on_transpose_encoder(value)
+        else:
+            self._handle_function_button(cc, value)
 
     def _handle_function_button(self, cc, value):
         """Handle SHIFT and RECALL on any channel."""

@@ -4,26 +4,10 @@ CMix — Mix Mode component.
 Responsibilities:
   - Pad 0-14: select regular tracks (with double-tap solo)
   - Pad 15: select master track
-  - Encoders 0-15: control macros 1-16 of the first Audio Effect Rack on
-    the selected track
-  - Transpose encoder: control volume of the selected track
   - Shift+Recall: advance track page (wraps)
 """
 
 import time
-
-# ---------------------------------------------------------------------------
-# Sensitivity constants  (calibrate against real hardware after deployment)
-# ---------------------------------------------------------------------------
-# Encoder feel — adjust these to taste:
-#   ENCODER_SENSITIVITY:  step size per single slow click (delta=1).
-#                         0.005 → ~200 slow clicks sweeps full range.
-#                         Increase to make slow turns coarser.
-#   ENCODER_ACCELERATION: exponent applied to speed. 1.0 = linear (every click
-#                         the same size). 1.5 = fast turns are disproportionately
-#                         larger, giving fine control when slow + quick sweep when fast.
-ENCODER_SENSITIVITY   = 0.005   # ~200 slow clicks to sweep full range
-ENCODER_ACCELERATION  = 1.0
 
 DOUBLE_TAP_MS = 0.400  # seconds
 
@@ -41,14 +25,48 @@ class CMix:
         # Double-tap state: pad_index -> (timestamp, track_index)
         self._last_tap = {}
 
+        # Cached Audio Effect Rack on the selected track (None if not found).
+        self._current_rack = None
+
         self._song.view.add_selected_track_listener(self._on_selected_track_changed)
+        self._scan_rack()
 
     # ------------------------------------------------------------------
     # Listener management
     # ------------------------------------------------------------------
 
     def _on_selected_track_changed(self):
+        self._scan_rack()
         self._request_rebuild_midi_map()
+
+    # ------------------------------------------------------------------
+    # Rack helpers
+    # ------------------------------------------------------------------
+
+    def _scan_rack(self):
+        """Cache the first Audio Effect Rack on the selected track."""
+        track = self._song.view.selected_track
+        if track is not None:
+            for device in track.devices:
+                if device.class_name == 'AudioEffectGroupDevice':
+                    self._current_rack = device
+                    return
+        self._current_rack = None
+
+    @staticmethod
+    def _encoder_delta(value):
+        """
+        Decode a relative mode-1 CC value into a signed, accelerated step.
+        Returns None for neutral values (0 or 64).
+        CW  (1–63):  positive delta, slow≈0.002, fast≈0.020
+        CCW (65–127): negative delta, same magnitude
+        """
+        if value == 0 or value == 64:
+            return None
+        raw = value if value < 64 else -(128 - value)
+        magnitude = abs(raw)
+        step = 0.002 + (magnitude / 63.0) * 0.018
+        return step if raw > 0 else -step
 
     # ------------------------------------------------------------------
     # Track helpers
@@ -61,6 +79,37 @@ class CMix:
         if track_index < len(tracks):
             return tracks[track_index]
         return None
+
+    # ------------------------------------------------------------------
+    # Encoder input
+    # ------------------------------------------------------------------
+
+    def on_encoder(self, encoder_index, value):
+        """Encoder 0–15 → macro 1–16 on the first Audio Effect Rack."""
+        delta = self._encoder_delta(value)
+        if delta is None:
+            return
+        if self._current_rack is None:
+            self._show_message('No Audio Effect Rack on selected track')
+            return
+        macro_index = encoder_index + 1  # parameters[0] is the device on/off toggle
+        params = self._current_rack.parameters
+        if macro_index >= len(params):
+            self._show_message('Macro %d not available' % (encoder_index + 1))
+            return
+        param = params[macro_index]
+        param.value = max(0.0, min(1.0, param.value + delta))
+
+    def on_transpose_encoder(self, value):
+        """Transpose encoder → volume of the selected track."""
+        delta = self._encoder_delta(value)
+        if delta is None:
+            return
+        track = self._song.view.selected_track
+        if track is None:
+            return
+        vol = track.mixer_device.volume
+        vol.value = max(0.0, min(1.0, vol.value + delta))
 
     # ------------------------------------------------------------------
     # Pad input
@@ -96,42 +145,6 @@ class CMix:
             self._last_tap[pad_index] = (now, track_index)
 
     # ------------------------------------------------------------------
-    # Encoder MIDI map
-    # ------------------------------------------------------------------
-
-    def on_encoder_turn(self, encoder_index, raw_value):
-        """Handle encoder CC from receive_midi. Expects two's-complement relative values."""
-        track = self._song.view.selected_track
-        rack  = self._find_rack(track)
-        if rack is None:
-            return
-        param_index = encoder_index + 1  # parameters[0] = Device On; macros start at 1
-        if param_index >= len(rack.parameters):
-            return
-        param  = rack.parameters[param_index]
-        # Signed-bit relative decoding (BeatStep relative mode 1):
-        #   CW:  raw 1–63  → +1 to +63
-        #   CCW: raw 65–127 → -1 to -63  (65 = -1 slow, 127 = -63 fast)
-        delta  = raw_value if raw_value < 64 else -(raw_value - 64)
-        speed  = abs(delta)
-        step   = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (param.max - param.min)
-        param.value = max(param.min, min(param.max, param.value + (step if delta > 0 else -step)))
-
-    # ------------------------------------------------------------------
-    # Encoder input
-    # ------------------------------------------------------------------
-
-    def on_transpose_turn(self, raw_value):
-        """Transpose encoder: always controls volume of selected track."""
-        delta = raw_value if raw_value < 64 else -(raw_value - 64)
-        if delta == 0:
-            return
-        speed = abs(delta)
-        vol   = self._song.view.selected_track.mixer_device.volume
-        step  = (speed ** ENCODER_ACCELERATION) * ENCODER_SENSITIVITY * (vol.max - vol.min)
-        vol.value = max(vol.min, min(vol.max, vol.value + (step if delta > 0 else -step)))
-
-    # ------------------------------------------------------------------
     # Function button input
     # ------------------------------------------------------------------
 
@@ -153,17 +166,6 @@ class CMix:
         tracks   = self._song.tracks
         n_pages  = max(1, -(-len(tracks) // 15))  # ceil division
         self._page = (self._page + 1) % n_pages
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _find_rack(track):
-        for device in track.devices:
-            if device.class_name == 'AudioEffectGroupDevice':
-                return device
-        return None
 
     # ------------------------------------------------------------------
     # Cleanup
