@@ -34,6 +34,8 @@ ENCODER_ACCELERATION = 2.0
 # Tick interval thresholds (seconds). Ticks arriving faster than FAST_INTERVAL
 # get full MAX_STEP; ticks slower than SLOW_INTERVAL get only MIN_STEP.
 # Typical ranges: fast spin ~0.03–0.06 s/tick, slow spin ~0.2–0.5 s/tick.
+# FAST_INTERVAL is the most impactful constant: lower it if fast spins feel
+# sluggish, raise it if acceleration kicks in too easily.
 ENCODER_FAST_INTERVAL = 0.06   # s — at or below this → full speed
 ENCODER_SLOW_INTERVAL = 0.30   # s — at or above this → minimum speed
 
