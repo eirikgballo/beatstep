@@ -65,6 +65,9 @@ PAD_MSG_IDS = [
     36, 37, 38, 39, 40, 41, 42, 43,   # hw 0x78–0x7F
 ]
 
+# Temporary: log incoming MIDI and _send_midi results to Log.txt while debugging on the Mac.
+DEBUG_MIDI = True
+
 # Reverse-lookup map built once at import time for O(1) dispatch.
 _PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
 
@@ -78,6 +81,7 @@ class BeatStep(ControlSurface):
     def __init__(self, c_instance):
         ControlSurface.__init__(self, c_instance)
         self._hw_task = None
+        self._debug_count = 0
         self._shift_held = False
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
@@ -146,9 +150,12 @@ class BeatStep(ControlSurface):
             messages += Sysex.setup_encoder(i, ENCODER_CC_BASE + i)
         messages += Sysex.setup_transpose_encoder(TRANSPOSE_CC)
 
-        for msg in messages:
-            self._send_midi(msg)
+        results = [self._send_midi(msg) for msg in messages]
         self.log_message('BeatStep: %d setup sysex sent' % len(messages))
+        if DEBUG_MIDI:
+            self.log_message('BeatStep: _send_midi results: %d True, %d False, %d other (%r)' % (
+                results.count(True), results.count(False),
+                len(results) - results.count(True) - results.count(False), results[-1]))
         self._update_leds()
 
     # ------------------------------------------------------------------
@@ -156,6 +163,9 @@ class BeatStep(ControlSurface):
     # ------------------------------------------------------------------
 
     def receive_midi(self, midi_bytes):
+        if DEBUG_MIDI and self._debug_count < 50:
+            self._debug_count += 1
+            self.log_message('BeatStep: IN %s' % ' '.join('%02X' % b for b in midi_bytes))
         if len(midi_bytes) < 3:
             return
         status, data1, data2 = midi_bytes[0], midi_bytes[1], midi_bytes[2]
