@@ -84,13 +84,17 @@ class Sim:
     def _state(self):
         pads = getattr(self.harness.script, '_pads', None)
         tracks = self.song.tracks
+        mode = getattr(self.harness.script, '_mode', None)
         state = {
+            'modus': mode.name if mode else '?',
             'valgt': self.song.view.selected_track.name,
             'side': pads._page + 1 if pads else '?',
             'solo': ','.join(t.name.replace('Spor ', '') for t in tracks if t.solo) or '-',
         }
         for t in list(tracks) + [self.song.master_track]:
             state['%s volum' % t.name] = round(t.mixer_device.volume.value, 3)
+            for send in t.mixer_device.sends:
+                state['%s %s' % (t.name, send.name)] = round(send.value, 3)
             for d in t.devices:
                 if d.class_name == 'AudioEffectGroupDevice':
                     for p in d.parameters[1:]:

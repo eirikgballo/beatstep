@@ -86,7 +86,7 @@ def main():
     step('ext sync trykk (avbryt)', lambda: h.receive((0xB9, 31, 127)), 0.5)
     step('pad 1 trykk (Spor 17)', lambda: h.receive((0x99, 44, 127)), 1.0)
     step('pad 1 slipp', lambda: h.receive((0x89, 44, 0)), 0.05)
-    step('recall trykk (ingen effekt)', lambda: h.receive((0xB9, 5, 127)), 0.1)
+    step('recall trykk (Volum, tidlig)', lambda: h.receive((0xB9, 5, 127)), 0.1)
     step('3 s uten noe', lambda: ticks(3.0))
     step('cntrl trykk (seq-modus)', lambda: h.receive((0xB9, 30, 127)), 0.5)
     step('cntrl slipp', lambda: h.receive((0xB9, 30, 0)), 0.1)
@@ -94,6 +94,16 @@ def main():
     step('cntrl trykk (kontroll)', lambda: h.receive((0xB9, 30, 127)), 0.5)
     step('cntrl slipp', lambda: h.receive((0xB9, 30, 0)), 0.1)
     step('kanal 1-note', lambda: h.receive((0x90, 40, 64)), 0.1)
+    step('recall trykk (Volum)', lambda: h.receive((0xB9, 5, 127)), 0.5)
+    step('recall slipp', lambda: h.receive((0xB9, 5, 0)), 0.1)
+    step('enc 2 +1 (Spor 18 volum)', lambda: h.receive((0xB9, 11, 1)), 0.5)
+    step('enc 16 +1 (Spor 32 finnes ikke)', lambda: h.receive((0xB9, 25, 1)), 0.5)
+    step('store trykk (Sends)', lambda: h.receive((0xB9, 32, 127)), 0.5)
+    step('store slipp', lambda: h.receive((0xB9, 32, 0)), 0.1)
+    step('enc 1 +1 (Spor 9 send A)', lambda: h.receive((0xB9, 10, 1)), 0.5)
+    step('enc 9 +1 (Spor 9 send B)', lambda: h.receive((0xB9, 18, 1)), 0.5)
+    step('chan trykk (Rack)', lambda: h.receive((0xB9, 33, 127)), 0.5)
+    step('chan slipp', lambda: h.receive((0xB9, 33, 0)), 0.1)
     step('legg til spor', lambda: h.song.create_track(), 0.1)
     step('slett spor 2', lambda: h.song.delete_track(1), 0.1)
     step('solo spor 18 fra Live', lambda: setattr(h.song.tracks[16], 'solo', True), 0.1)
@@ -104,6 +114,10 @@ def main():
         out.append('%s volum=%.4f makro1=%.4f' % (name, track.mixer_device.volume.value,
                                                   track.devices[0].parameters[1].value if track.devices else -1))
     out.append('Master volum=%.4f' % h.song.master_track.mixer_device.volume.value)
+    for name in ('Spor 9', 'Spor 18'):
+        track = [t for t in h.song.tracks if t.name == name][0]
+        out.append('%s volum=%.4f sends=%s' % (name, track.mixer_device.volume.value,
+                                                ['%.4f' % s.value for s in track.mixer_device.sends]))
     out.append('meldinger: %s' % h.messages)
     print('\n'.join(out))
 

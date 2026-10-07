@@ -168,8 +168,8 @@ Sysex.py       Sysex builders, hardware addresses, colors (no state)
 TrackPads.py   Pads in every mode: selection, solo, paging, pad LEDs, blink
 Encoders.py    Relative decoding, time-based acceleration, clamped parameter writes
 RackMode.py    Encoders → macros of the first Audio Effect Rack
-VolumeMode.py  Encoders → track volumes            (planned)
-SendsMode.py   Encoders → send A/B                 (planned)
+VolumeMode.py  Encoders → volumes of the 16 tracks on the current page
+SendsMode.py   Encoders → send A/B of 8 tracks (own 8-track paging)
 ```
 
 Each mode is a small class with `on_encoder(index, value)`. `BeatStep` holds the active mode and routes

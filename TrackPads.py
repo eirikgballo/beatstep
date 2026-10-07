@@ -173,6 +173,11 @@ class TrackPads:
     # Paging
     # ------------------------------------------------------------------
 
+    @property
+    def page(self):
+        """Current page, 0-indexed. Modes use it to pick their tracks."""
+        return self._page
+
     def _page_count(self):
         return max(1, -(-len(self._song.tracks) // PADS_PER_PAGE))  # ceil division, at least one page
 

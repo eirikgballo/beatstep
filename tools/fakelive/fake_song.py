@@ -63,8 +63,9 @@ def plain_device(name='EQ Eight', class_name='Eq8'):
 
 class _MixerDevice:
 
-    def __init__(self):
+    def __init__(self, n_sends):
         self.volume = Parameter('Track Volume', 0.0, 1.0, 0.85)
+        self.sends = [Parameter('Send %s' % 'AB'[i], 0.0, 1.0, 0.0) for i in range(n_sends)]
 
 
 class Track(_Listenable):
@@ -73,7 +74,7 @@ class Track(_Listenable):
         _Listenable.__init__(self)
         self.name = name
         self.devices = devices or []
-        self.mixer_device = _MixerDevice()
+        self.mixer_device = _MixerDevice(n_sends=2)
         self._solo = False
 
     @property
@@ -99,7 +100,7 @@ class MasterTrack:
     def __init__(self):
         self.name = 'Master'
         self.devices = []
-        self.mixer_device = _MixerDevice()
+        self.mixer_device = _MixerDevice(n_sends=0)
 
 
 class _SongView(_Listenable):

@@ -7,6 +7,8 @@ from .Encoders import KNOB_FEEL, nudge
 
 class RackMode:
 
+    name = 'Rack'
+
     def __init__(self, song, show_message, accelerator):
         self._song          = song
         self._show_message  = show_message

@@ -15,7 +15,9 @@ from _Framework import Task
 from . import Sysex
 from .Encoders import Accelerator, TRANSPOSE_FEEL, nudge
 from .RackMode import RackMode
+from .SendsMode import SendsMode
 from .TrackPads import TrackPads
+from .VolumeMode import VolumeMode
 
 # ---------------------------------------------------------------------------
 # MIDI constants
@@ -85,7 +87,13 @@ class BeatStep(ControlSurface):
             send_midi    = self._send_midi,
         )
         self._accelerator = Accelerator()
-        self._mode = RackMode(self.song(), self.show_message, self._accelerator)
+        # Mode button CC → mode. The script always boots in Rack mode.
+        self._modes = {
+            BTN_CHAN_CC:   RackMode(self.song(), self.show_message, self._accelerator),
+            BTN_RECALL_CC: VolumeMode(self.song(), self._pads, self._accelerator),
+            BTN_STORE_CC:  SendsMode(self.song(), self._pads, self._accelerator),
+        }
+        self._mode = self._modes[BTN_CHAN_CC]
         self._schedule_hardware_setup()
         self.request_rebuild_midi_map()
 
@@ -183,6 +191,9 @@ class BeatStep(ControlSurface):
                 self._shift_held = value > 0
             elif cc == BTN_EXTSYNC_CC and value > 0:
                 self._pads.toggle_page_picker()
+            elif cc in self._modes and value > 0 and self._modes[cc] is not self._mode:
+                self._mode = self._modes[cc]
+                self.show_message('BeatStep: %s mode' % self._mode.name)
             elif cc == BTN_CNTRL_CC and value > 0:
                 # The firmware toggles between control and sequencer mode. The script can't read the mode,
                 # so it counts presses and assumes control mode on start.
@@ -200,15 +211,17 @@ class BeatStep(ControlSurface):
         self._update_button_leds()
 
     def _update_button_leds(self):
-        # Every configured button is turned off (the firmware lights some of them on its own),
-        # except ext sync while the page picker is open and cntrl/seq (red) in sequencer mode.
+        # Every configured button is turned off (the firmware lights some of them on its own), except the
+        # active mode button, ext sync while the page picker is open and cntrl/seq (red) in sequencer mode.
         for hw, cc in _BUTTONS:
             if hw == Sysex.STOP_HW_INDEX:
                 continue
             if cc == BTN_CNTRL_CC:
                 self._send_midi(Sysex.set_button_led(hw, self._seq_mode, Sysex.COLOR_RED))
+            elif cc == BTN_EXTSYNC_CC:
+                self._send_midi(Sysex.set_button_led(hw, self._pads.picking_page))
             else:
-                self._send_midi(Sysex.set_button_led(hw, cc == BTN_EXTSYNC_CC and self._pads.picking_page))
+                self._send_midi(Sysex.set_button_led(hw, self._modes.get(cc) is self._mode))
 
     def _on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track in every mode, or master with shift held."""
