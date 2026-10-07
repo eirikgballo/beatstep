@@ -1,5 +1,5 @@
 """
-QSetup — sysex message builders for the Arturia BeatStep.
+Sysex — sysex message builders for the Arturia BeatStep.
 No state; all functions return tuples of bytes ready for _send_midi().
 
 Sysex format:

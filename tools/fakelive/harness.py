@@ -1,5 +1,5 @@
 """
-Kjører Beatstep_Q uendret mot falsk Live.
+Kjører BeatStep uendret mot falsk Live.
 
 Etterligner det Live gjør rundt scriptet:
   - bare MIDI som er registrert i build_midi_map når receive_midi (resten filtreres bort)
@@ -7,6 +7,7 @@ Etterligner det Live gjør rundt scriptet:
   - update_display kalles hvert 100 ms og driver Task-køen
 """
 
+import glob
 import importlib.util
 import os
 import sys
@@ -14,7 +15,7 @@ import sys
 _FAKE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(_FAKE_DIR))
 PACKAGE = 'beatstep_q'
-SCRIPT_FILES = [os.path.join(REPO, f) for f in ('__init__.py', 'Beatstep_Q.py', 'CMix.py', 'QSetup.py')]
+SCRIPT_FILES = sorted(glob.glob(os.path.join(REPO, '*.py')))
 
 if _FAKE_DIR not in sys.path:
     sys.path.insert(0, _FAKE_DIR)

@@ -1,5 +1,5 @@
-from .Beatstep_Q import Beatstep_Q
+from .BeatStep import BeatStep
 
 
 def create_instance(c_instance):
-    return Beatstep_Q(c_instance)
+    return BeatStep(c_instance)

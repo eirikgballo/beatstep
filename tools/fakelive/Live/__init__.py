@@ -1,4 +1,4 @@
-"""Falsk `Live`-modul: bare det Beatstep_Q bruker."""
+"""Falsk `Live`-modul: bare det BeatStep bruker."""
 
 
 class MidiMap:

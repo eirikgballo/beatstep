@@ -1,12 +1,12 @@
 """
 bs.py — snakk direkte med BeatStep fra Windows, uten Ableton.
 
-Bruker QSetup.py fra scriptet, så vi tester de samme sysex-byggerne som Live sender.
+Bruker Sysex.py fra scriptet, så vi tester de samme sysex-byggerne som Live sender.
 
   python tools/bs.py ports                      # list MIDI-porter
   python tools/bs.py listen [--log fil]         # logg alt BeatStep sender
   python tools/bs.py setup                      # samme hardware-oppsett som _send_setup_sysex
-  python tools/bs.py led 1 2 5 7 --color red    # pad-nummer 1-16 (via QSetup.set_pad_color)
+  python tools/bs.py led 1 2 5 7 --color red    # pad-nummer 1-16 (via Sysex.set_pad_color)
   python tools/bs.py led --hw 0x73 --color 1    # rå hardware-indeks
   python tools/bs.py clear                      # alle pads svarte
   python tools/bs.py sysex F0 00 20 6B 7F 42 02 00 10 70 01 F7
@@ -24,19 +24,19 @@ import mido
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-_spec = importlib.util.spec_from_file_location('QSetup', os.path.join(_REPO, 'QSetup.py'))
-QSetup = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(QSetup)
+_spec = importlib.util.spec_from_file_location('Sysex', os.path.join(_REPO, 'Sysex.py'))
+Sysex = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(Sysex)
 
-# Speiler konstantene i Beatstep_Q.py (kan ikke importeres uten Live).
+# Speiler konstantene i BeatStep.py (kan ikke importeres uten Live).
 PAD_MSG_IDS = [44, 45, 46, 47, 48, 49, 50, 51, 36, 37, 38, 39, 40, 41, 42, 43]
 ENCODER_CC_BASE = 10
 TRANSPOSE_CC = 27
 BUTTON_CCS = {7: 'shift', 5: 'recall'}
 
 COLORS = {
-    'off': QSetup.COLOR_OFF, 'black': QSetup.COLOR_OFF,
-    'red': QSetup.COLOR_RED, 'blue': QSetup.COLOR_BLUE, 'magenta': QSetup.COLOR_MAGENTA,
+    'off': Sysex.COLOR_OFF, 'black': Sysex.COLOR_OFF,
+    'red': Sysex.COLOR_RED, 'blue': Sysex.COLOR_BLUE, 'magenta': Sysex.COLOR_MAGENTA,
 }
 
 
@@ -68,7 +68,7 @@ def _parse_color(text):
 
 
 def _describe(msg):
-    """Tolk en innkommende melding etter oppsettet i Beatstep_Q."""
+    """Tolk en innkommende melding etter oppsettet i BeatStep."""
     if msg.type == 'sysex':
         return 'sysex'
     if not hasattr(msg, 'channel'):
@@ -115,12 +115,12 @@ def cmd_listen(args):
 def _setup_messages():
     messages = []
     for i in range(16):
-        messages += QSetup.setup_pad(i)
-    messages += QSetup.setup_button(QSetup.RECALL_HW_INDEX)
-    messages += QSetup.setup_button(QSetup.SHIFT_HW_INDEX)
+        messages += Sysex.setup_pad(i, PAD_MSG_IDS[i])
+    messages += Sysex.setup_button(Sysex.RECALL_HW_INDEX, 5)
+    messages += Sysex.setup_button(Sysex.SHIFT_HW_INDEX, 7)
     for i in range(16):
-        messages += QSetup.setup_encoder(i, ENCODER_CC_BASE + i)
-    messages += QSetup.setup_transpose_encoder(TRANSPOSE_CC)
+        messages += Sysex.setup_encoder(i, ENCODER_CC_BASE + i)
+    messages += Sysex.setup_transpose_encoder(TRANSPOSE_CC)
     return messages
 
 
@@ -133,7 +133,7 @@ def cmd_setup(args):
 
 def cmd_boot(args):
     """Som _send_setup_sysex: oppsett, valgfri pause, så LED-maling (pad 1 rød, resten blå)."""
-    leds = [QSetup.set_pad_color(i, QSetup.COLOR_RED if i == 0 else QSetup.COLOR_BLUE) for i in range(16)]
+    leds = [Sysex.set_pad_color(i, Sysex.COLOR_RED if i == 0 else Sysex.COLOR_BLUE) for i in range(16)]
     with _open_out(args) as out:
         _send_all(out, _setup_messages(), args.gap)
         time.sleep(args.led_delay / 1000.0)
@@ -143,15 +143,15 @@ def cmd_boot(args):
 def cmd_led(args):
     color = _parse_color(args.color)
     if args.hw:
-        messages = [QSetup._msg(QSetup._CMD_COLOR, _parse_int(h), color) for h in args.hw]
+        messages = [Sysex._msg(Sysex._CMD_COLOR, _parse_int(h), color) for h in args.hw]
     else:
-        messages = [QSetup.set_pad_color(int(p) - 1, color) for p in args.pads]
+        messages = [Sysex.set_pad_color(int(p) - 1, color) for p in args.pads]
     with _open_out(args) as out:
         _send_all(out, messages, args.gap)
 
 
 def cmd_clear(args):
-    messages = [QSetup.set_pad_color(i, QSetup.COLOR_OFF) for i in range(16)]
+    messages = [Sysex.set_pad_color(i, Sysex.COLOR_OFF) for i in range(16)]
     with _open_out(args) as out:
         _send_all(out, messages, args.gap)
 

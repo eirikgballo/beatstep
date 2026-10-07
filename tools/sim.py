@@ -1,10 +1,10 @@
 """
-sim.py — kjør Beatstep_Q mot ekte BeatStep og falsk Live, uten Ableton.
+sim.py — kjør BeatStep mot ekte BeatStep og falsk Live, uten Ableton.
 
   python tools/sim.py [--tracks 20] [--log logs/sim.log]
 
 Skriver én linje per hendelse: hva som kom inn, hva Live-tilstanden ble, og hvilke LED-er som ble sendt.
-Lastes automatisk på nytt når Beatstep_Q.py, CMix.py eller QSetup.py endres (som å restarte Live).
+Lastes automatisk på nytt når en .py-fil i repoet endres (som å restarte Live).
 
 Kommandoer kan skrives til logs/sim_cmd.txt (én per linje), for å simulere endringer i Live-UI-et:
   select N | solo N | add | del N | state | reload | sysex F0 .. F7
@@ -77,11 +77,11 @@ class Sim:
     # ------------------------------------------------------------------
 
     def _state(self):
-        cmix = getattr(self.harness.script, '_cmix', None)
+        pads = getattr(self.harness.script, '_pads', None)
         tracks = self.song.tracks
         state = {
             'valgt': self.song.view.selected_track.name,
-            'side': cmix._page + 1 if cmix else '?',
+            'side': pads._page + 1 if pads else '?',
             'solo': ','.join(t.name.replace('Spor ', '') for t in tracks if t.solo) or '-',
         }
         for t in list(tracks) + [self.song.master_track]:

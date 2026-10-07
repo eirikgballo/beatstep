@@ -1,0 +1,183 @@
+"""
+TrackPads — the pads in every mode.
+
+  - Pad 0-14: select regular tracks (double tap toggles solo)
+  - Pad 15: select master track
+  - Track paging
+  - Pad LEDs, including the red/magenta blink for a selected + soloed track
+"""
+
+import time
+
+from . import Sysex
+
+DOUBLE_TAP_MS = 0.400  # seconds
+BLINK_INTERVAL = 0.3   # seconds per phase for a selected + soloed pad (red/magenta)
+
+
+class TrackPads:
+
+    def __init__(self, song, show_message, send_midi):
+        self._song          = song
+        self._show_message  = show_message
+        self._send_midi     = send_midi
+
+        self._page = 0
+
+        # Double-tap state: pad_index -> (timestamp, track_index)
+        self._last_tap = {}
+
+        # Tracks we have solo listeners on.
+        self._subscribed_tracks = []
+
+        # Blink phase for a track that is both selected and soloed (red/magenta).
+        self._blink_on = True
+
+        self._song.view.add_selected_track_listener(self._on_selected_track_changed)
+        self._song.add_tracks_listener(self._on_tracks_changed)
+        self._setup_solo_listeners()
+
+    # ------------------------------------------------------------------
+    # Listener management
+    # ------------------------------------------------------------------
+
+    def _on_selected_track_changed(self):
+        self.update_leds()
+
+    def _on_tracks_changed(self):
+        self._setup_solo_listeners()
+        self.update_leds()
+
+    def _on_solo_changed(self):
+        self.update_leds()
+
+    def _setup_solo_listeners(self):
+        self._teardown_solo_listeners()
+        for track in self._song.tracks:
+            track.add_solo_listener(self._on_solo_changed)
+        self._subscribed_tracks = list(self._song.tracks)
+
+    def _teardown_solo_listeners(self):
+        for track in self._subscribed_tracks:
+            try:
+                track.remove_solo_listener(self._on_solo_changed)
+            except Exception:
+                pass
+        self._subscribed_tracks = []
+
+    # ------------------------------------------------------------------
+    # LED output
+    # ------------------------------------------------------------------
+
+    def update_leds(self):
+        for pad_index in range(16):
+            self._send_pad_led(pad_index)
+
+    def _send_pad_led(self, pad_index):
+        if pad_index == 15:
+            track = self._song.master_track
+        else:
+            track = self._track_for_pad(pad_index)
+
+        if track is None:
+            color = Sysex.COLOR_OFF
+        elif track is self._song.view.selected_track:
+            if getattr(track, 'solo', False) and not self._blink_on:
+                color = Sysex.COLOR_MAGENTA
+            else:
+                color = Sysex.COLOR_RED
+        elif getattr(track, 'solo', False):
+            color = Sysex.COLOR_MAGENTA
+        else:
+            color = Sysex.COLOR_BLUE
+
+        self._send_midi(Sysex.set_pad_color(pad_index, color))
+
+    def tick(self):
+        """Called every ~100 ms from update_display. Drives the selected+solo blink."""
+        blink_on = int(time.monotonic() / BLINK_INTERVAL) % 2 == 0
+        if blink_on == self._blink_on:
+            return
+        self._blink_on = blink_on
+        selected = self._song.view.selected_track
+        if not getattr(selected, 'solo', False):
+            return
+        for pad_index in range(15):
+            if self._track_for_pad(pad_index) is selected:
+                self._send_pad_led(pad_index)
+
+    # ------------------------------------------------------------------
+    # Track helpers
+    # ------------------------------------------------------------------
+
+    def _track_for_pad(self, pad_index):
+        """Return the Live track for pad 0-14, or None."""
+        track_index = self._page * 15 + pad_index
+        tracks = self._song.tracks
+        if track_index < len(tracks):
+            return tracks[track_index]
+        return None
+
+    # ------------------------------------------------------------------
+    # Pad input
+    # ------------------------------------------------------------------
+
+    def on_pad_press(self, pad_index):
+        now = time.monotonic()
+
+        if pad_index == 15:
+            # Master track
+            last_time, _ = self._last_tap.get(15, (0, None))
+            if now - last_time < DOUBLE_TAP_MS:
+                self._show_message("Master can't be solo'ed")
+                self._last_tap[15] = (0, None)
+            else:
+                self._song.view.selected_track = self._song.master_track
+                self._last_tap[15] = (now, self._song.master_track)
+            return
+
+        track = self._track_for_pad(pad_index)
+        if track is None:
+            return
+
+        track_index = self._page * 15 + pad_index
+        last_time, last_index = self._last_tap.get(pad_index, (0, -1))
+        if now - last_time < DOUBLE_TAP_MS and last_index == track_index:
+            # Second tap within window: toggle solo
+            track.solo = not track.solo
+            self._last_tap[pad_index] = (0, -1)
+        else:
+            # First tap: select track
+            self._song.view.selected_track = track
+            self._last_tap[pad_index] = (now, track_index)
+
+    def on_pad_release(self, pad_index):
+        # The firmware turns the pad off on release, so the color must be sent again.
+        self._send_pad_led(pad_index)
+
+    # ------------------------------------------------------------------
+    # Paging
+    # ------------------------------------------------------------------
+
+    def advance_page(self):
+        tracks   = self._song.tracks
+        n_pages  = max(1, -(-len(tracks) // 15))  # ceil division
+        self._page = (self._page + 1) % n_pages
+        self.update_leds()
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    def cleanup(self):
+        try:
+            self._song.view.remove_selected_track_listener(self._on_selected_track_changed)
+        except Exception:
+            pass
+        try:
+            self._song.remove_tracks_listener(self._on_tracks_changed)
+        except Exception:
+            pass
+        self._teardown_solo_listeners()
+        for pad_index in range(16):
+            self._send_midi(Sysex.set_pad_color(pad_index, Sysex.COLOR_OFF))

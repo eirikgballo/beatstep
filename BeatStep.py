@@ -1,7 +1,7 @@
 """
-Beatstep_Q — MIDI Remote Script for the Arturia BeatStep.
+BeatStep — MIDI Remote Script for the Arturia BeatStep.
 
-Boots directly into Mix Mode (CMix).  Hardware is configured via sysex on
+Owns the hardware setup, MIDI routing and the active mode. Hardware is configured via sysex on
 every connection so controller state is always deterministic.
 
 See DESIGN.md for the full specification and SIGNALS.md for measured hardware behaviour.
@@ -12,8 +12,10 @@ import Live
 from _Framework.ControlSurface import ControlSurface
 from _Framework import Task
 
-from . import QSetup
-from .CMix import CMix
+from . import Sysex
+from .Encoders import Accelerator, TRANSPOSE_FEEL, nudge
+from .RackMode import RackMode
+from .TrackPads import TrackPads
 
 # ---------------------------------------------------------------------------
 # MIDI constants
@@ -50,17 +52,20 @@ _PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
 # ControlSurface
 # ---------------------------------------------------------------------------
 
-class Beatstep_Q(ControlSurface):
+class BeatStep(ControlSurface):
 
     def __init__(self, c_instance):
         ControlSurface.__init__(self, c_instance)
         self._hw_task = None
-        # No try/except: if CMix fails, Live should show the error instead of a silent, dead controller.
-        self._cmix = CMix(
+        self._shift_held = False
+        # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
+        self._pads = TrackPads(
             song         = self.song(),
             show_message = self.show_message,
             send_midi    = self._send_midi,
         )
+        self._accelerator = Accelerator()
+        self._mode = RackMode(self.song(), self.show_message, self._accelerator)
         self._schedule_hardware_setup()
         self.request_rebuild_midi_map()
 
@@ -73,12 +78,12 @@ class Beatstep_Q(ControlSurface):
         self._schedule_hardware_setup()
 
     def disconnect(self):
-        self._cmix.cleanup()
+        self._pads.cleanup()
         ControlSurface.disconnect(self)
 
     def update_display(self):
         ControlSurface.update_display(self)
-        self._cmix.tick()
+        self._pads.tick()
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
@@ -103,17 +108,17 @@ class Beatstep_Q(ControlSurface):
         # Note and CC numbers are set explicitly so a different preset in the BeatStep can't break the mapping.
         messages = []
         for i, note in enumerate(PAD_MSG_IDS):
-            messages += QSetup.setup_pad(i, note)
-        messages += QSetup.setup_button(QSetup.RECALL_HW_INDEX, BTN_RECALL_CC)
-        messages += QSetup.setup_button(QSetup.SHIFT_HW_INDEX, BTN_SHIFT_CC)
+            messages += Sysex.setup_pad(i, note)
+        messages += Sysex.setup_button(Sysex.RECALL_HW_INDEX, BTN_RECALL_CC)
+        messages += Sysex.setup_button(Sysex.SHIFT_HW_INDEX, BTN_SHIFT_CC)
         for i in range(16):
-            messages += QSetup.setup_encoder(i, ENCODER_CC_BASE + i)
-        messages += QSetup.setup_transpose_encoder(TRANSPOSE_CC)
+            messages += Sysex.setup_encoder(i, ENCODER_CC_BASE + i)
+        messages += Sysex.setup_transpose_encoder(TRANSPOSE_CC)
 
         for msg in messages:
             self._send_midi(msg)
-        self.log_message('BeatStep_Q: %d setup sysex sent' % len(messages))
-        self._cmix.update_leds()
+        self.log_message('BeatStep: %d setup sysex sent' % len(messages))
+        self._pads.update_leds()
 
     # ------------------------------------------------------------------
     # MIDI receive
@@ -137,20 +142,27 @@ class Beatstep_Q(ControlSurface):
             return
         idx = _PAD_NOTE_TO_INDEX[note]
         if velocity > 0:
-            self._cmix.on_pad_press(idx)
+            self._pads.on_pad_press(idx)
         else:
-            self._cmix.on_pad_release(idx)
+            self._pads.on_pad_release(idx)
 
     def _handle_cc(self, cc, value):
         """Encoders and function buttons."""
         if ENCODER_CC_BASE <= cc < ENCODER_CC_BASE + 16:
-            self._cmix.on_encoder(cc - ENCODER_CC_BASE, value)
+            self._mode.on_encoder(cc - ENCODER_CC_BASE, value)
         elif cc == TRANSPOSE_CC:
-            self._cmix.on_transpose_encoder(value)
+            self._on_transpose_encoder(value)
         elif cc == BTN_SHIFT_CC:
-            if value > 0:
-                self._cmix.on_shift_press()
-            else:
-                self._cmix.on_shift_release()
-        elif cc == BTN_RECALL_CC and value > 0:
-            self._cmix.on_recall_press()
+            self._shift_held = value > 0
+        elif cc == BTN_RECALL_CC and value > 0 and self._shift_held:
+            self._pads.advance_page()
+
+    def _on_transpose_encoder(self, value):
+        """Transpose encoder → volume of the selected track, in every mode."""
+        delta = self._accelerator.delta('transpose', value, TRANSPOSE_FEEL)
+        if delta is None:
+            return
+        track = self.song().view.selected_track
+        if track is None:
+            return
+        nudge(track.mixer_device.volume, delta)

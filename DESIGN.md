@@ -145,10 +145,18 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 ## 6. Component Structure
 
 ```
-BeatStep_Q  — ControlSurface subclass; hardware setup, MIDI routing, update_display tick
-  QSetup    — Sysex message builders (no state)
-  CMix      — Track selection, solo, paging, modes, encoder routing, LED management
+__init__.py    Entry point for Live (create_instance)
+BeatStep.py    ControlSurface: hardware setup, MIDI routing, mode switching, button LEDs, transpose encoder
+Sysex.py       Sysex builders, hardware addresses, colors (no state)
+TrackPads.py   Pads in every mode: selection, solo, paging, pad LEDs, blink
+Encoders.py    Relative decoding, time-based acceleration, clamped parameter writes
+RackMode.py    Encoders → macros of the first Audio Effect Rack
+VolumeMode.py  Encoders → track volumes            (planned)
+SendsMode.py   Encoders → send A/B                 (planned)
 ```
+
+Each mode is a small class with `on_encoder(index, value)`. `BeatStep` holds the active mode and routes
+encoder input to it. Shared behaviour lives in `TrackPads` and `Encoders`, never in a mode.
 
 ---
 
