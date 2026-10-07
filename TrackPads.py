@@ -1,9 +1,8 @@
 """
 TrackPads — the pads in every mode.
 
-  - Pad 0-14: select regular tracks (double tap toggles solo)
-  - Pad 15: select master track
-  - Track paging
+  - Pad 0-15: select tracks on the current page (double tap toggles solo)
+  - Track paging, 16 tracks per page
   - Pad LEDs, including the red/magenta blink for a selected + soloed track
 """
 
@@ -13,6 +12,7 @@ from . import Sysex
 
 DOUBLE_TAP_MS = 0.400  # seconds
 BLINK_INTERVAL = 0.3   # seconds per phase for a selected + soloed pad (red/magenta)
+PADS_PER_PAGE = 16
 
 
 class TrackPads:
@@ -23,6 +23,13 @@ class TrackPads:
         self._send_midi     = send_midi
 
         self._page = 0
+
+        # True while the pads show the page picker instead of tracks.
+        self.picking_page = False
+
+        # True while the BeatStep is in sequencer mode: the pads don't send notes, so instead of
+        # track colors all pads blink red as a warning.
+        self.suspended = False
 
         # Double-tap state: pad_index -> (timestamp, track_index)
         self._last_tap = {}
@@ -74,10 +81,21 @@ class TrackPads:
             self._send_pad_led(pad_index)
 
     def _send_pad_led(self, pad_index):
-        if pad_index == 15:
-            track = self._song.master_track
-        else:
-            track = self._track_for_pad(pad_index)
+        if self.suspended:
+            color = Sysex.COLOR_RED if self._blink_on else Sysex.COLOR_OFF
+            self._send_midi(Sysex.set_pad_color(pad_index, color))
+            return
+        if self.picking_page:
+            if pad_index == self._page:
+                color = Sysex.COLOR_RED
+            elif pad_index < self._page_count():
+                color = Sysex.COLOR_BLUE
+            else:
+                color = Sysex.COLOR_OFF
+            self._send_midi(Sysex.set_pad_color(pad_index, color))
+            return
+
+        track = self._track_for_pad(pad_index)
 
         if track is None:
             color = Sysex.COLOR_OFF
@@ -99,10 +117,13 @@ class TrackPads:
         if blink_on == self._blink_on:
             return
         self._blink_on = blink_on
-        selected = self._song.view.selected_track
-        if not getattr(selected, 'solo', False):
+        if self.suspended:
+            self.update_leds()
             return
-        for pad_index in range(15):
+        selected = self._song.view.selected_track
+        if self.picking_page or not getattr(selected, 'solo', False):
+            return
+        for pad_index in range(PADS_PER_PAGE):
             if self._track_for_pad(pad_index) is selected:
                 self._send_pad_led(pad_index)
 
@@ -111,8 +132,8 @@ class TrackPads:
     # ------------------------------------------------------------------
 
     def _track_for_pad(self, pad_index):
-        """Return the Live track for pad 0-14, or None."""
-        track_index = self._page * 15 + pad_index
+        """Return the Live track for pad 0-15 on the current page, or None."""
+        track_index = self._page * PADS_PER_PAGE + pad_index
         tracks = self._song.tracks
         if track_index < len(tracks):
             return tracks[track_index]
@@ -123,24 +144,17 @@ class TrackPads:
     # ------------------------------------------------------------------
 
     def on_pad_press(self, pad_index):
-        now = time.monotonic()
-
-        if pad_index == 15:
-            # Master track
-            last_time, _ = self._last_tap.get(15, (0, None))
-            if now - last_time < DOUBLE_TAP_MS:
-                self._show_message("Master can't be solo'ed")
-                self._last_tap[15] = (0, None)
-            else:
-                self._song.view.selected_track = self._song.master_track
-                self._last_tap[15] = (now, self._song.master_track)
+        if self.picking_page:
+            self._go_to_page(pad_index)
             return
+
+        now = time.monotonic()
 
         track = self._track_for_pad(pad_index)
         if track is None:
             return
 
-        track_index = self._page * 15 + pad_index
+        track_index = self._page * PADS_PER_PAGE + pad_index
         last_time, last_index = self._last_tap.get(pad_index, (0, -1))
         if now - last_time < DOUBLE_TAP_MS and last_index == track_index:
             # Second tap within window: toggle solo
@@ -159,10 +173,22 @@ class TrackPads:
     # Paging
     # ------------------------------------------------------------------
 
-    def advance_page(self):
-        tracks   = self._song.tracks
-        n_pages  = max(1, -(-len(tracks) // 15))  # ceil division
-        self._page = (self._page + 1) % n_pages
+    def _page_count(self):
+        return max(1, -(-len(self._song.tracks) // PADS_PER_PAGE))  # ceil division, at least one page
+
+    def toggle_page_picker(self):
+        """Enter or leave the page picker, where pad N chooses page N."""
+        self.picking_page = not self.picking_page
+        self._last_tap = {}
+        self.update_leds()
+
+    def _go_to_page(self, page):
+        """Show page `page` (0-indexed) and leave the picker. Empty pages are refused and the picker stays open."""
+        if page >= self._page_count():
+            self._show_message('Page %d is empty' % (page + 1))
+            return
+        self._page = page
+        self.picking_page = False
         self.update_leds()
 
     # ------------------------------------------------------------------

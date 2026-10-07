@@ -16,7 +16,7 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
   MIDI Remote Script structure. This implementation is deliberately narrower in scope.
 - **Three encoder modes**, chosen with dedicated buttons: **Rack** (macros), **Volume** (track volumes), **Sends** (send A/B).
 - **Pads always select tracks** (single tap) and toggle solo (double tap), in every mode.
-- **Track pages** of 16 tracks, chosen directly with `shift` + pad N.
+- **Track pages** of 16 tracks, chosen with the page picker (`ext sync`, then pad N).
 
 ---
 
@@ -31,9 +31,9 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | `recall` | | CC 5 CH10 |
 | `chan` | | CC 33 CH10 |
 | `store` | | CC 32 CH10 |
-| `cntrl/seq` | | CC 30 CH10 (only used to trigger a repaint) |
+| `cntrl/seq` | | CC 30 CH10 (tracks sequencer mode, triggers a repaint) |
 | `play`, `stop` | | CC 28, 29 CH10 (only used to trigger a repaint) |
-| `ext sync` | | Not configured, not used |
+| `ext sync` | | CC 31 CH10 |
 
 > Pad numbering: "pad 1–8" is always the **top row**. In code, top row = indices 0–7, bottom row = 8–15.
 > LED addresses are row-major: pad index N → hw `0x70 + N`.
@@ -75,7 +75,6 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | Single tap pad N | Select track `page_start + N` |
 | Double tap pad N (≤ 400 ms) | First tap selects, second tap toggles solo. Solo is additive |
 | Tap a pad without a track | Nothing |
-| `shift` + pad N | Go to page N, if page N has at least one track. Otherwise status bar: `"Page N is empty"` |
 
 ### Encoders
 
@@ -89,9 +88,26 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 
 - Pads and Volume: page P covers tracks `16·(P−1) + 1` … `16·P`.
 - Sends: page P covers tracks `8·(P−1) + 1` … `8·P`. Sends has its own 8-track paging, so the same
-  `shift` + pad N shows different tracks in Sends than on the pads. This is a deliberate choice.
+  page N shows different tracks in Sends than on the pads. This is a deliberate choice.
 - Page changes repaint all pad LEDs.
 - If tracks are removed so the current page is empty, the page stays and all pads show black.
+
+### Page picker
+
+- Press `ext sync`: the pads show pages instead of tracks. Pad N = page N.
+  Red = current page, blue = page with tracks, black = empty page. The `ext sync` LED is on.
+- Press pad N: go to page N and show tracks again. An empty page is refused with status bar
+  `"Page N is empty"` and the picker stays open.
+- Press `ext sync` again: close the picker without changing page.
+
+### Sequencer mode warning
+
+`cntrl/seq` switches the firmware to sequencer mode, where the pads send no notes. The script can't read
+the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In sequencer mode:
+
+- all pads blink red (same 0.3 s phase as the solo blink) and `cntrl/seq` is lit red
+- status bar: `"BeatStep in sequencer mode, press cntrl/seq to return"`
+- track colors are restored when `cntrl/seq` is pressed again
 
 ### Buttons
 
@@ -100,13 +116,13 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | `chan` | Rack mode |
 | `recall` | Volume mode |
 | `store` | Sends mode |
-| `shift` | Modifier for `shift` + pad (page) and `shift` + transpose (master volume) |
-| `cntrl/seq` | Firmware switches to sequencer mode. Script only repaints on release |
+| `shift` | Modifier for `shift` + transpose (master volume) |
+| `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
 | `play`, `stop` | Firmware starts/stops its sequencer. Script only repaints on release |
-| `ext sync` | No function |
+| `ext sync` | Opens the page picker, or closes it without changing page |
 
 > Firmware side effects (see SIGNALS.md): `recall`/`store` + pad recalls/stores a preset, `chan` + pad changes the
-> global MIDI channel, `shift` + pad changes sequencer settings. Only `shift` + pad is used deliberately.
+> global MIDI channel, `shift` + pad changes sequencer settings. None of these combinations are used.
 
 ---
 
@@ -127,7 +143,8 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | Button | LED |
 |--------|-----|
 | `chan` / `recall` / `store` | On when its mode is active |
-| `cntrl/seq` | Off |
+| `cntrl/seq` | Red in sequencer mode, otherwise off |
+| `ext sync` | On while the page picker is open |
 | others | Off |
 
 ### Repaint rules (firmware overwrites our LEDs)

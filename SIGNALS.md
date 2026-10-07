@@ -99,6 +99,24 @@ videresender pad-notene på CH1. Sekvensnoter i området 36–51 vil da tolkes s
 `CMix._encoder_delta` bruker bare retningen og tiden mellom hakk, og kaster bort størrelsen.
 Enten bør størrelsen brukes, eller så slås hardware-akselerasjonen av via sysex.
 
+## Sequencer-modus (etter cntrl/seq)
+
+- **Padene sender ingen noter.** Encoderne redigerer sekvensens steg og sender noter på CH1 i stedet for CC.
+- BeatStepen blir stående i sequencer-modus til cntrl/seq trykkes igjen. Det finnes ingen melding som forteller hvilken modus den står i.
+- Pad-LED kan fortsatt styres med sysex (målt: alle 16 blinket rødt).
+- Play starter sekvensen og bruker padene som stegindikator.
+
+**Felle under testing:** tester gjort mens BeatStepen sto i sequencer-modus ser ut som «firmwaren sluker trykket».
+Sjekk alltid modus før en kombinasjon konkluderes med å ikke virke.
+
+## Kombinasjoner i kontrollmodus
+
+| Kombinasjon | Sendes |
+|-------------|--------|
+| shift + pad | Pad-noten (og firmwaren endrer en sequencer-innstilling i bakgrunnen) |
+| shift + encoder | Encoder-CC |
+| shift + transpose | Transpose-CC |
+
 ## Annet
 
 - CNTRL/SEQ-knappen lyser rødt uavhengig av scriptet (modusindikator i firmware).

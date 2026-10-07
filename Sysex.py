@@ -56,8 +56,14 @@ _BEATSTEP_CHANNEL = 0x09
 PAD_HW_OFFSET       = 0x70   # pads 0-15  → 0x70–0x7F
 _ENC_HW_OFFSET      = 0x20   # encoders 0-15 → 0x20–0x2F
 _TRANSPOSE_HW_INDEX = 0x30   # transpose encoder
+PLAY_HW_INDEX       = 0x58   # play button
+STOP_HW_INDEX       = 0x59   # stop button (no LED)
+CNTRL_HW_INDEX      = 0x5A   # cntrl/seq button
+EXTSYNC_HW_INDEX    = 0x5B   # ext sync button
 RECALL_HW_INDEX     = 0x5C   # recall button (92)
+STORE_HW_INDEX      = 0x5D   # store button
 SHIFT_HW_INDEX      = 0x5E   # shift button  (94)
+CHAN_HW_INDEX       = 0x5F   # chan button
 
 _CMD_COLOR = 0x10
 
@@ -75,6 +81,12 @@ def set_pad_color(pad_index, color):
     """Return a sysex tuple to set the LED color of a pad (0-15)."""
     hw = pad_index + PAD_HW_OFFSET
     return _msg(_CMD_COLOR, hw, color)
+
+
+def set_button_led(hw_index, on, color=0x7F):
+    """Return a sysex tuple to turn a button LED on or off. Most buttons have a single color and ignore
+    `color`; cntrl/seq takes pad colors (see SIGNALS.md)."""
+    return _msg(_CMD_COLOR, hw_index, color if on else COLOR_OFF)
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,25 @@ _STATUS_CC       = 0xB0 | _CHANNEL
 # Function button CC numbers (programmed via sysex on every connection).
 BTN_SHIFT_CC  = 7
 BTN_RECALL_CC = 5
+BTN_PLAY_CC   = 28
+BTN_STOP_CC   = 29
+BTN_CNTRL_CC  = 30
+BTN_EXTSYNC_CC = 31
+BTN_STORE_CC  = 32
+BTN_CHAN_CC   = 33
+
+# hw index → CC for every button the script configures.
+_BUTTONS = [
+    (Sysex.SHIFT_HW_INDEX,  BTN_SHIFT_CC),
+    (Sysex.RECALL_HW_INDEX, BTN_RECALL_CC),
+    (Sysex.PLAY_HW_INDEX,   BTN_PLAY_CC),
+    (Sysex.STOP_HW_INDEX,   BTN_STOP_CC),
+    (Sysex.CNTRL_HW_INDEX,  BTN_CNTRL_CC),
+    (Sysex.EXTSYNC_HW_INDEX, BTN_EXTSYNC_CC),
+    (Sysex.STORE_HW_INDEX,  BTN_STORE_CC),
+    (Sysex.CHAN_HW_INDEX,   BTN_CHAN_CC),
+]
+_BUTTON_CCS = [cc for _, cc in _BUTTONS]
 
 # Encoder CC numbers (programmed via sysex on every connection).
 # Encoders 0–15 → CC 10–25; transpose encoder → CC 27.
@@ -58,6 +77,7 @@ class BeatStep(ControlSurface):
         ControlSurface.__init__(self, c_instance)
         self._hw_task = None
         self._shift_held = False
+        self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
         self._pads = TrackPads(
             song         = self.song(),
@@ -79,6 +99,9 @@ class BeatStep(ControlSurface):
 
     def disconnect(self):
         self._pads.cleanup()
+        for hw, _ in _BUTTONS:
+            if hw != Sysex.STOP_HW_INDEX:
+                self._send_midi(Sysex.set_button_led(hw, False))
         ControlSurface.disconnect(self)
 
     def update_display(self):
@@ -91,7 +114,7 @@ class BeatStep(ControlSurface):
         h = self._c_instance.handle()
         for note in PAD_MSG_IDS:
             Live.MidiMap.forward_midi_note(h, midi_map_handle, _CHANNEL, note)
-        for cc in [BTN_SHIFT_CC, BTN_RECALL_CC, TRANSPOSE_CC] + [ENCODER_CC_BASE + i for i in range(16)]:
+        for cc in _BUTTON_CCS + [TRANSPOSE_CC] + [ENCODER_CC_BASE + i for i in range(16)]:
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, _CHANNEL, cc)
 
     # ------------------------------------------------------------------
@@ -109,8 +132,8 @@ class BeatStep(ControlSurface):
         messages = []
         for i, note in enumerate(PAD_MSG_IDS):
             messages += Sysex.setup_pad(i, note)
-        messages += Sysex.setup_button(Sysex.RECALL_HW_INDEX, BTN_RECALL_CC)
-        messages += Sysex.setup_button(Sysex.SHIFT_HW_INDEX, BTN_SHIFT_CC)
+        for hw, cc in _BUTTONS:
+            messages += Sysex.setup_button(hw, cc)
         for i in range(16):
             messages += Sysex.setup_encoder(i, ENCODER_CC_BASE + i)
         messages += Sysex.setup_transpose_encoder(TRANSPOSE_CC)
@@ -118,7 +141,7 @@ class BeatStep(ControlSurface):
         for msg in messages:
             self._send_midi(msg)
         self.log_message('BeatStep: %d setup sysex sent' % len(messages))
-        self._pads.update_leds()
+        self._update_leds()
 
     # ------------------------------------------------------------------
     # MIDI receive
@@ -142,7 +165,10 @@ class BeatStep(ControlSurface):
             return
         idx = _PAD_NOTE_TO_INDEX[note]
         if velocity > 0:
+            was_picking = self._pads.picking_page
             self._pads.on_pad_press(idx)
+            if self._pads.picking_page != was_picking:
+                self._update_button_leds()
         else:
             self._pads.on_pad_release(idx)
 
@@ -152,17 +178,47 @@ class BeatStep(ControlSurface):
             self._mode.on_encoder(cc - ENCODER_CC_BASE, value)
         elif cc == TRANSPOSE_CC:
             self._on_transpose_encoder(value)
-        elif cc == BTN_SHIFT_CC:
-            self._shift_held = value > 0
-        elif cc == BTN_RECALL_CC and value > 0 and self._shift_held:
-            self._pads.advance_page()
+        elif cc in _BUTTON_CCS:
+            if cc == BTN_SHIFT_CC:
+                self._shift_held = value > 0
+            elif cc == BTN_EXTSYNC_CC and value > 0:
+                self._pads.toggle_page_picker()
+            elif cc == BTN_CNTRL_CC and value > 0:
+                # The firmware toggles between control and sequencer mode. The script can't read the mode,
+                # so it counts presses and assumes control mode on start.
+                self._seq_mode = not self._seq_mode
+                self._pads.suspended = self._seq_mode
+                if self._seq_mode:
+                    self.show_message('BeatStep in sequencer mode, press cntrl/seq to return')
+            if value == 0:
+                # While a button is held the firmware shows its own overlay on the pads (or the sequencer
+                # runs its step indicator), and on release it restores its own colors, not ours.
+                self._update_leds()
+
+    def _update_leds(self):
+        self._pads.update_leds()
+        self._update_button_leds()
+
+    def _update_button_leds(self):
+        # Every configured button is turned off (the firmware lights some of them on its own),
+        # except ext sync while the page picker is open and cntrl/seq (red) in sequencer mode.
+        for hw, cc in _BUTTONS:
+            if hw == Sysex.STOP_HW_INDEX:
+                continue
+            if cc == BTN_CNTRL_CC:
+                self._send_midi(Sysex.set_button_led(hw, self._seq_mode, Sysex.COLOR_RED))
+            else:
+                self._send_midi(Sysex.set_button_led(hw, cc == BTN_EXTSYNC_CC and self._pads.picking_page))
 
     def _on_transpose_encoder(self, value):
-        """Transpose encoder → volume of the selected track, in every mode."""
+        """Transpose encoder → volume of the selected track in every mode, or master with shift held."""
         delta = self._accelerator.delta('transpose', value, TRANSPOSE_FEEL)
         if delta is None:
             return
-        track = self.song().view.selected_track
+        if self._shift_held:
+            track = self.song().master_track
+        else:
+            track = self.song().view.selected_track
         if track is None:
             return
         nudge(track.mixer_device.volume, delta)

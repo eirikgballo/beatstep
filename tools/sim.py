@@ -26,6 +26,8 @@ from fake_song import default_song  # noqa: E402
 
 CMD_FILE = os.path.join(REPO, 'logs', 'sim_cmd.txt')
 COLOR_NAMES = {0: 'svart', 1: 'rød', 16: 'blå', 17: 'magenta'}
+BUTTON_NAMES = {0x58: 'play', 0x59: 'stop', 0x5A: 'cntrl', 0x5B: 'ext sync', 0x5C: 'recall',
+                0x5D: 'store', 0x5E: 'shift', 0x5F: 'chan'}
 
 
 class Sim:
@@ -62,8 +64,11 @@ class Sim:
         for b in self._pending_leds:
             if len(b) == 12 and b[8] == 0x10:
                 hw, color = b[9], b[10]
-                name = 'pad %d' % (hw - 0x70 + 1) if 0x70 <= hw <= 0x7F else 'hw 0x%02X' % hw
-                leds.append('%s=%s' % (name, COLOR_NAMES.get(color, color)))
+                if 0x70 <= hw <= 0x7F:
+                    leds.append('pad %d=%s' % (hw - 0x70 + 1, COLOR_NAMES.get(color, color)))
+                else:
+                    name = BUTTON_NAMES.get(hw, 'hw 0x%02X' % hw)
+                    leds.append('%s=%s' % (name, 'på' if color else 'av'))
             else:
                 other += 1
         parts = []
