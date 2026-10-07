@@ -235,7 +235,18 @@ solo without selecting, and delaying the selection by 400 ms felt too slow.
 |-------|------|----------------|
 | Hardware probe | `tools/bs.py` | Send raw sysex / LEDs, log everything the BeatStep sends |
 | Simulator | `tools/sim.py` | The unmodified script against the real BeatStep and a fake Live (`tools/fakelive`) |
-| Unit tests | pytest (planned) | Scenario tests on the sent MIDI without hardware |
+| Unit tests | `tests/` (pytest) | The behaviour in this document, checked on sent MIDI and fake Live state, no hardware |
+| Refactor check | `tools/scenario.py` | Fixed scenario printed as text; identical output before and after a refactor |
+
+```
+uv pip install -r requirements-dev.txt
+python -m pytest tests                       # unit tests
+python tools/sim.py --log logs/sim.log       # simulator, BeatStep on USB
+python tools/bs.py listen                    # raw MIDI from the BeatStep
+```
+
+The tests use a fake clock, so timing (blink, encoder acceleration) is deterministic.
+When a hardware test reveals a bug, add a test for it before fixing it.
 
 Only behaviour inside Live itself (listener timing, `_send_midi` buffering) needs testing on the Mac.
 

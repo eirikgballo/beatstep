@@ -1,0 +1,5 @@
+# Verktøy for testing på Windows/Mac uten Ableton (ikke nødvendig for Live).
+# Installer: uv pip install -r requirements-dev.txt
+mido
+python-rtmidi
+pytest
