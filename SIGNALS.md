@@ -19,9 +19,39 @@ Fargen må sendes på nytt ved note off.
 
 ## Knappe-LED (samme sysex, cmd 0x10)
 
-- Recall (0x5C): bare blå. 0 = av, alle andre verdier (1, 17) = blå.
-- 0x58–0x5F med verdi 127 tente: cntrl/seq magenta, ext sync blå, recall blå, store rød, shift blå, chan blå, play hvit.
-  Hvilken adresse som er hvilken knapp er ikke kartlagt enkeltvis ennå.
+| hw | Knapp | Lys |
+|----|-------|-----|
+| 0x58 | play | Hvit, av/på (1 og 127 gir begge hvit) |
+| 0x59 | stop | Ingen lys |
+| 0x5A | cntrl/seq | Som pads: 1 = rød, 16 = blå, 17/127 = magenta |
+| 0x5B | ext sync | Blå, av/på |
+| 0x5C | recall | Blå, av/på (1, 17 og 127 gir alle blå) |
+| 0x5D | store | Rød, av/på |
+| 0x5E | shift | Blå, av/på |
+| 0x5F | chan | Blå, av/på |
+
+Verdi 0 slukker alle. Cntrl/seq lyser rødt fra firmware ved oppstart, men kan overstyres.
+
+## Knapper som CC (oppsett: mode 8, CH10, behaviour 1, CC via cmd 0x03)
+
+Alle knappene kan programmeres til å sende CC (127 ved trykk, 0 ved slipp). Målt med CC 28–33:
+play 28, stop 29, cntrl/seq 30, ext sync 31, store 32, chan 33. Recall (CC 5) og shift (CC 7) som før.
+
+**Firmwaren beholder sin egen funksjon i tillegg til CC-en:**
+
+| Knapp | Firmware-funksjon | Pads mens knappen holdes | Etter slipp |
+|-------|-------------------|--------------------------|-------------|
+| play | Starter sequencer: MIDI Start `FA` + sekvensnoter CH1 | Uendret | |
+| stop | MIDI Stop `FC` | Uendret | |
+| cntrl/seq | Bytter til sequencer-modus, pads slukker og blir værende slik | | Må trykkes igjen for å komme tilbake |
+| ext sync | Slår ekstern synk av/på, bare lyset endres | Uendret | |
+| store | Store + pad lagrer preset | Alle av, pad 1 blinker rødt (aktiv preset) | Firmwarens farger (alle blå) |
+| recall | Recall + pad laster preset | Alle av, pad 1 blinker rødt | Firmwarens farger (alle blå) |
+| chan | Chan + pad bytter global MIDI-kanal | Alle av, pad 10 blå (kanal 10) | Firmwarens farger (alle blå) |
+| shift | Shift-funksjoner i firmware | Pad 1, 9 og 13 blå, resten av | Firmwarens farger (alle blå) |
+
+Etter et overlegg setter firmwaren tilbake **sine** pad-farger, ikke scriptets. Scriptet må male alle pads
+på nytt når store, recall, chan, shift eller cntrl/seq slippes.
 
 ## Burst og timing
 
