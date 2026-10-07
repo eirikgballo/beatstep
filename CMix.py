@@ -12,6 +12,7 @@ import time
 from . import QSetup
 
 DOUBLE_TAP_MS = 0.400  # seconds
+BLINK_INTERVAL = 0.3   # seconds per phase for a selected + soloed pad (red/magenta)
 
 # ---------------------------------------------------------------------------
 # Macro encoder feel (the 16 knobs → Audio Effect Rack macros)
@@ -76,6 +77,9 @@ class CMix:
         # Tracks we have solo listeners on.
         self._subscribed_tracks = []
 
+        # Blink phase for a track that is both selected and soloed (red/magenta).
+        self._blink_on = True
+
         self._song.view.add_selected_track_listener(self._on_selected_track_changed)
         self._song.add_tracks_listener(self._on_tracks_changed)
         self._setup_solo_listeners()
@@ -130,25 +134,28 @@ class CMix:
     # ------------------------------------------------------------------
 
     def update_leds(self):
-        selected = self._song.view.selected_track
-        master   = self._song.master_track
-
         for pad_index in range(16):
-            if pad_index == 15:
-                track = master
-            else:
-                track = self._track_for_pad(pad_index)
+            self._send_pad_led(pad_index)
 
-            if track is None:
-                color = QSetup.COLOR_OFF
-            elif track is selected:
-                color = QSetup.COLOR_RED
-            elif getattr(track, 'solo', False):
+    def _send_pad_led(self, pad_index):
+        if pad_index == 15:
+            track = self._song.master_track
+        else:
+            track = self._track_for_pad(pad_index)
+
+        if track is None:
+            color = QSetup.COLOR_OFF
+        elif track is self._song.view.selected_track:
+            if getattr(track, 'solo', False) and not self._blink_on:
                 color = QSetup.COLOR_MAGENTA
             else:
-                color = QSetup.COLOR_BLUE
+                color = QSetup.COLOR_RED
+        elif getattr(track, 'solo', False):
+            color = QSetup.COLOR_MAGENTA
+        else:
+            color = QSetup.COLOR_BLUE
 
-            self._send_midi(QSetup.set_pad_color(pad_index, color))
+        self._send_midi(QSetup.set_pad_color(pad_index, color))
 
     def _encoder_delta(self, key, value, transpose=False):
         """
@@ -253,6 +260,23 @@ class CMix:
             # First tap: select track
             self._song.view.selected_track = track
             self._last_tap[pad_index] = (now, track_index)
+
+    def tick(self):
+        """Called every ~100 ms from update_display. Drives the selected+solo blink."""
+        blink_on = int(time.time() / BLINK_INTERVAL) % 2 == 0
+        if blink_on == self._blink_on:
+            return
+        self._blink_on = blink_on
+        selected = self._song.view.selected_track
+        if not getattr(selected, 'solo', False):
+            return
+        for pad_index in range(15):
+            if self._track_for_pad(pad_index) is selected:
+                self._send_pad_led(pad_index)
+
+    def on_pad_release(self, pad_index):
+        # Firmwaren slukker padden ved slipp, så fargen må sendes på nytt.
+        self._send_pad_led(pad_index)
 
     # ------------------------------------------------------------------
     # Function button input

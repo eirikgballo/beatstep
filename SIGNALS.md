@@ -14,6 +14,15 @@ Rekkefølgen er radvis. `DESIGN.md` sin påstand om kolonnevis rekkefølge (0x70
 
 Farger bekreftet: 0 = av, 1 = rød, 16 = blå, 17 = magenta.
 
+**Firmwaren slukker en pad når den slippes**, og overskriver fargen scriptet sendte mens padden var nede.
+Fargen må sendes på nytt ved note off.
+
+## Knappe-LED (samme sysex, cmd 0x10)
+
+- Recall (0x5C): bare blå. 0 = av, alle andre verdier (1, 17) = blå.
+- 0x58–0x5F med verdi 127 tente: cntrl/seq magenta, ext sync blå, recall blå, store rød, shift blå, chan blå, play hvit.
+  Hvilken adresse som er hvilken knapp er ikke kartlagt enkeltvis ennå.
+
 ## Burst og timing
 
 - 16 LED-meldinger sendt uten pause: alle 16 tenner.
@@ -52,11 +61,13 @@ videresender pad-notene på CH1. Sekvensnoter i området 36–51 vil da tolkes s
 ## Encodere (relative mode 2, slik `setup` konfigurerer dem)
 
 - Encoder 1 sender CC 10 på CH10, transpose sender CC 27 på CH10.
-- Med klokka: verdi 1. Mot klokka: verdi 127. **Alltid ±1 per hakk, også ved rask vridning.**
+- Encoder N sender CC 9+N (encoder 8 = CC 17, målt).
+- Med klokka: verdi 1. Mot klokka: verdi 127. Normalt ±1 per hakk, også ved rask vridning.
 - Rask vridning gir hakk med 8–25 ms mellomrom, sakte vridning rundt 0,6–0,9 s.
+- **Hardware-akselerasjon:** ved svært rask vridning (meldinger med cirka 3 ms mellomrom) hopper verdien til 12 (delta +12).
 
-Akselerasjon må derfor baseres på tiden mellom hakk, slik `CMix._encoder_delta` gjør.
-`DESIGN.md` sin beskrivelse av akselerasjon basert på verdienes størrelse virker ikke med denne konfigurasjonen.
+`CMix._encoder_delta` bruker bare retningen og tiden mellom hakk, og kaster bort størrelsen.
+Enten bør størrelsen brukes, eller så slås hardware-akselerasjonen av via sysex.
 
 ## Annet
 

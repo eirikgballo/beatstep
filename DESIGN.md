@@ -100,9 +100,12 @@ All LED semantics in one place — no magic color numbers in logic code.
 | No track exists at this pad position | black | — |
 | Track exists, not selected, not soloed | blue | lowest |
 | Track soloed, not currently selected | magenta | middle |
-| Track currently selected | red | highest — overrides soloed |
+| Track currently selected | red | highest |
+| Track selected **and** soloed | blinks red/magenta (0.3 s per phase) | highest |
 
-> A track that is both selected and soloed shows **red**.
+> The blink is driven from `update_display` (~100 ms) and only sends a LED message when the phase changes.
+>
+> The BeatStep firmware turns a pad's LED off when the pad is released, so the pad's color is re-sent on note off.
 
 ### Pad 16 (master track)
 

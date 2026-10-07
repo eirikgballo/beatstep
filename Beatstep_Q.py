@@ -21,6 +21,7 @@ from .CMix import CMix
 
 # Pads send Note On — channel depends on hardware config; accept any channel.
 _NOTE_ON_MASK = 0x90
+_NOTE_OFF_MASK = 0x80
 
 # Function buttons send CC.
 # After sysex setup, all are on CH10. Before sysex (factory state), function
@@ -88,6 +89,11 @@ class Beatstep_Q(ControlSurface):
         if self._cmix:
             self._cmix.cleanup()
         ControlSurface.disconnect(self)
+
+    def update_display(self):
+        ControlSurface.update_display(self)
+        if self._cmix:
+            self._cmix.tick()
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
@@ -171,6 +177,8 @@ class Beatstep_Q(ControlSurface):
 
         if (status & 0xF0) == _NOTE_ON_MASK:
             self._handle_pad_note(data1, data2)
+        elif (status & 0xF0) == _NOTE_OFF_MASK:
+            self._handle_pad_note(data1, 0)
         elif status == _STATUS_CC_CH10:
             self._handle_cc(data1, data2)
         elif status == _STATUS_CC_CH1:
@@ -178,11 +186,15 @@ class Beatstep_Q(ControlSurface):
             self._handle_function_button(data1, data2)
 
     def _handle_pad_note(self, note, velocity):
-        """Handle Note On CH10 — pad presses in note gate mode."""
-        if note in _PAD_NOTE_TO_INDEX and velocity > 0:
-            idx = _PAD_NOTE_TO_INDEX[note]
+        """Handle Note On/Off CH10 — pad presses and releases in note gate mode."""
+        if note not in _PAD_NOTE_TO_INDEX:
+            return
+        idx = _PAD_NOTE_TO_INDEX[note]
+        if velocity > 0:
             self.log_message('BeatStep_Q: pad press index=%d note=%d' % (idx, note))
             self._cmix.on_pad_press(idx)
+        else:
+            self._cmix.on_pad_release(idx)
 
     def _handle_cc(self, cc, value):
         """Handle CC CH10 — encoders and function buttons."""
