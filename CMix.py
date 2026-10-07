@@ -55,20 +55,16 @@ TRANSPOSE_SLOW_INTERVAL = 0.25   # seconds: higher = longer to reach full speed,
 
 class CMix:
 
-    def __init__(self, song, show_message, request_rebuild_midi_map, send_midi):
-        self._song                      = song
-        self._show_message              = show_message
-        self._request_rebuild_midi_map  = request_rebuild_midi_map
-        self._send_midi                 = send_midi
+    def __init__(self, song, show_message, send_midi):
+        self._song          = song
+        self._show_message  = show_message
+        self._send_midi     = send_midi
 
         self._page        = 0
         self._shift_held  = False
 
         # Double-tap state: pad_index -> (timestamp, track_index)
         self._last_tap = {}
-
-        # Cached Audio Effect Rack on the selected track (None if not found).
-        self._current_rack = None
 
         # Last-tick timestamps for time-based encoder acceleration.
         # Key: encoder index (0-15) or 'transpose'.
@@ -83,15 +79,12 @@ class CMix:
         self._song.view.add_selected_track_listener(self._on_selected_track_changed)
         self._song.add_tracks_listener(self._on_tracks_changed)
         self._setup_solo_listeners()
-        self._scan_rack()
 
     # ------------------------------------------------------------------
     # Listener management
     # ------------------------------------------------------------------
 
     def _on_selected_track_changed(self):
-        self._scan_rack()
-        self._request_rebuild_midi_map()
         self.update_leds()
 
     def _on_tracks_changed(self):
@@ -105,15 +98,15 @@ class CMix:
     # Rack helpers
     # ------------------------------------------------------------------
 
-    def _scan_rack(self):
-        """Cache the first Audio Effect Rack on the selected track."""
+    def _find_rack(self):
+        """First Audio Effect Rack on the selected track, or None.
+        Looked up on every use so added or deleted racks are picked up immediately."""
         track = self._song.view.selected_track
         if track is not None:
             for device in track.devices:
                 if device.class_name == 'AudioEffectGroupDevice':
-                    self._current_rack = device
-                    return
-        self._current_rack = None
+                    return device
+        return None
 
     def _setup_solo_listeners(self):
         self._teardown_solo_listeners()
@@ -166,10 +159,12 @@ class CMix:
         """
         if value == 0 or value == 64:
             return None
-        direction = 1 if value < 64 else -1
+        raw_delta = value if value < 64 else value - 128
+        direction = 1 if raw_delta > 0 else -1
 
-        now = time.time()
-        dt = now - self._enc_last_tick.get(key, now)
+        # The first tick after start has no previous tick and counts as slow (dt=inf).
+        now = time.monotonic()
+        dt = now - self._enc_last_tick.get(key, float('-inf'))
         self._enc_last_tick[key] = now
 
         if transpose:
@@ -180,6 +175,9 @@ class CMix:
             min_step, max_step, accel = ENCODER_MIN_STEP, ENCODER_MAX_STEP, ENCODER_ACCELERATION
 
         velocity = max(0.0, min(1.0, (slow - dt) / (slow - fast)))
+        if abs(raw_delta) > 1:
+            velocity = 1.0  # the hardware's own acceleration kicked in: the knob is spun very fast
+        # Note: full speed gives min_step + max_step, not max_step. Kept as-is to preserve the tuned feel.
         step = min_step + (velocity ** accel) * max_step
         return direction * step
 
@@ -204,11 +202,12 @@ class CMix:
         delta = self._encoder_delta(encoder_index, value)
         if delta is None:
             return
-        if self._current_rack is None:
+        rack = self._find_rack()
+        if rack is None:
             self._show_message('No Audio Effect Rack on selected track')
             return
         macro_index = encoder_index + 1  # parameters[0] is the device on/off toggle
-        params = self._current_rack.parameters
+        params = rack.parameters
         if macro_index >= len(params):
             self._show_message('Macro %d not available' % (encoder_index + 1))
             return
@@ -233,7 +232,7 @@ class CMix:
     # ------------------------------------------------------------------
 
     def on_pad_press(self, pad_index):
-        now = time.time()
+        now = time.monotonic()
 
         if pad_index == 15:
             # Master track
@@ -263,7 +262,7 @@ class CMix:
 
     def tick(self):
         """Called every ~100 ms from update_display. Drives the selected+solo blink."""
-        blink_on = int(time.time() / BLINK_INTERVAL) % 2 == 0
+        blink_on = int(time.monotonic() / BLINK_INTERVAL) % 2 == 0
         if blink_on == self._blink_on:
             return
         self._blink_on = blink_on
@@ -316,3 +315,5 @@ class CMix:
         except Exception:
             pass
         self._teardown_solo_listeners()
+        for pad_index in range(16):
+            self._send_midi(QSetup.set_pad_color(pad_index, QSetup.COLOR_OFF))

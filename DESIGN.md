@@ -32,7 +32,8 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | `chan` | | CC 33 CH10 |
 | `store` | | CC 32 CH10 |
 | `cntrl/seq` | | CC 30 CH10 (only used to trigger a repaint) |
-| `play`, `stop`, `ext sync` | | Not configured, not used |
+| `play`, `stop` | | CC 28, 29 CH10 (only used to trigger a repaint) |
+| `ext sync` | | Not configured, not used |
 
 > Pad numbering: "pad 1–8" is always the **top row**. In code, top row = indices 0–7, bottom row = 8–15.
 > LED addresses are row-major: pad index N → hw `0x70 + N`.
@@ -101,7 +102,8 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | `store` | Sends mode |
 | `shift` | Modifier for `shift` + pad (page) and `shift` + transpose (master volume) |
 | `cntrl/seq` | Firmware switches to sequencer mode. Script only repaints on release |
-| `play`, `stop`, `ext sync` | No function |
+| `play`, `stop` | Firmware starts/stops its sequencer. Script only repaints on release |
+| `ext sync` | No function |
 
 > Firmware side effects (see SIGNALS.md): `recall`/`store` + pad recalls/stores a preset, `chan` + pad changes the
 > global MIDI channel, `shift` + pad changes sequencer settings. Only `shift` + pad is used deliberately.
@@ -134,6 +136,7 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 |-------|---------|
 | Pad released | That pad |
 | `shift`, `recall`, `store`, `chan` or `cntrl/seq` released | All pads + button LEDs (firmware shows an overlay while held and restores **its own** colors) |
+| `stop` or `play` released | All pads + button LEDs (the running sequencer uses the pads as a step indicator) |
 | Selection, solo, track list or page change | Pads whose color changed |
 | Disconnect | All pads and button LEDs black |
 

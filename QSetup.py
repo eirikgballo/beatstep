@@ -81,17 +81,17 @@ def set_pad_color(pad_index, color):
 # Pad setup (note gate mode)
 # ---------------------------------------------------------------------------
 
-def setup_pad(pad_index):
+def setup_pad(pad_index, note):
     """
-    Configure one pad in note gate mode on CH10.
+    Configure one pad in note gate mode on CH10 with the given note number.
     Hardware index = pad_index + PAD_HW_OFFSET (0x70).
-    Note number is intentionally NOT set — factory defaults (44-51, 36-43) are correct.
     """
     hw = pad_index + PAD_HW_OFFSET
     return [
         _msg(_CMD_MODE,      hw, _PAD_NOTE_GATE),
         _msg(_CMD_CHANNEL,   hw, _BEATSTEP_CHANNEL),
         _msg(_CMD_BEHAVIOUR, hw, _BEHAVIOUR_GATE),
+        _msg(_CMD_NUMBER,    hw, note),
     ]
 
 
@@ -99,12 +99,13 @@ def setup_pad(pad_index):
 # Function button setup (CC gate mode)
 # ---------------------------------------------------------------------------
 
-def setup_button(hw_index):
-    """Configure a function button (recall, shift, etc.) in CC gate mode on CH10."""
+def setup_button(hw_index, cc_number):
+    """Configure a function button (recall, shift, etc.) in CC gate mode on CH10 with the given CC number."""
     return [
         _msg(_CMD_MODE,      hw_index, _PAD_CC_GATE),
         _msg(_CMD_CHANNEL,   hw_index, _BEATSTEP_CHANNEL),
         _msg(_CMD_BEHAVIOUR, hw_index, _BEHAVIOUR_GATE),
+        _msg(_CMD_NUMBER,    hw_index, cc_number),
     ]
 
 

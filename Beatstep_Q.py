@@ -4,7 +4,7 @@ Beatstep_Q — MIDI Remote Script for the Arturia BeatStep.
 Boots directly into Mix Mode (CMix).  Hardware is configured via sysex on
 every connection so controller state is always deterministic.
 
-See DESIGN.md for the full specification.
+See DESIGN.md for the full specification and SIGNALS.md for measured hardware behaviour.
 """
 
 import Live
@@ -19,27 +19,24 @@ from .CMix import CMix
 # MIDI constants
 # ---------------------------------------------------------------------------
 
-# Pads send Note On — channel depends on hardware config; accept any channel.
-_NOTE_ON_MASK = 0x90
-_NOTE_OFF_MASK = 0x80
+# Everything the script uses is on CH10 after setup. The BeatStep sequencer
+# sends notes on CH1, which must never reach the pad handler.
+_CHANNEL         = 9
+_STATUS_NOTE_ON  = 0x90 | _CHANNEL
+_STATUS_NOTE_OFF = 0x80 | _CHANNEL
+_STATUS_CC       = 0xB0 | _CHANNEL
 
-# Function buttons send CC.
-# After sysex setup, all are on CH10. Before sysex (factory state), function
-# buttons may be on CH1, so we handle both.
-_STATUS_CC_CH10 = 0xB9  # 0xB0 | 9
-_STATUS_CC_CH1  = 0xB0
-
-# Function button CC numbers (confirmed from raphaelquast reference).
+# Function button CC numbers (programmed via sysex on every connection).
 BTN_SHIFT_CC  = 7
 BTN_RECALL_CC = 5
 
 # Encoder CC numbers (programmed via sysex on every connection).
-# Encoders 0–15 → CC 10–25; transpose encoder → CC 26.
+# Encoders 0–15 → CC 10–25; transpose encoder → CC 27.
 ENCODER_CC_BASE  = 10
 TRANSPOSE_CC     = 27
 
 # Note numbers programmed into the hardware via sysex (note gate mode).
-# Physical layout (column-major in hardware): indices 0-3 = column 1, etc.
+# Row-major: index 0–7 = top row, 8–15 = bottom row, left to right.
 PAD_MSG_IDS = [
     44, 45, 46, 47, 48, 49, 50, 51,   # hw 0x70–0x77
     36, 37, 38, 39, 40, 41, 42, 43,   # hw 0x78–0x7F
@@ -57,163 +54,103 @@ class Beatstep_Q(ControlSurface):
 
     def __init__(self, c_instance):
         ControlSurface.__init__(self, c_instance)
-        self.log_message('BeatStep_Q: __init__ start')
-        self._cmix = None
         self._hw_task = None
-        self._midi_log_count = 0  # limit noisy MIDI logging
-        try:
-            self._cmix = CMix(
-                song                     = self.song(),
-                show_message             = self.show_message,
-                request_rebuild_midi_map = self.request_rebuild_midi_map,
-                send_midi                = self._send_midi,
-            )
-            self.log_message('BeatStep_Q: CMix created OK')
-        except Exception as e:
-            self.log_message('BeatStep_Q: ERROR creating CMix: %s' % str(e))
+        # No try/except: if CMix fails, Live should show the error instead of a silent, dead controller.
+        self._cmix = CMix(
+            song         = self.song(),
+            show_message = self.show_message,
+            send_midi    = self._send_midi,
+        )
         self._schedule_hardware_setup()
         self.request_rebuild_midi_map()
-        self.log_message('BeatStep_Q: __init__ done')
 
     # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
 
     def port_settings_changed(self):
-        self.log_message('BeatStep_Q: port_settings_changed')
         ControlSurface.port_settings_changed(self)
         self._schedule_hardware_setup()
 
     def disconnect(self):
-        self.log_message('BeatStep_Q: disconnect')
-        if self._cmix:
-            self._cmix.cleanup()
+        self._cmix.cleanup()
         ControlSurface.disconnect(self)
 
     def update_display(self):
         ControlSurface.update_display(self)
-        if self._cmix:
-            self._cmix.tick()
+        self._cmix.tick()
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
-        self.log_message('BeatStep_Q: build_midi_map called')
         ControlSurface.build_midi_map(self, midi_map_handle)
-        try:
-            h = self._c_instance.handle()
-            for note in PAD_MSG_IDS:
-                Live.MidiMap.forward_midi_note(h, midi_map_handle, 0, note)  # CH1
-                Live.MidiMap.forward_midi_note(h, midi_map_handle, 9, note)  # CH10
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_SHIFT_CC)
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, BTN_RECALL_CC)
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_SHIFT_CC)
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 0, BTN_RECALL_CC)
-            for i in range(16):
-                Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, ENCODER_CC_BASE + i)
-            Live.MidiMap.forward_midi_cc(h, midi_map_handle, 9, TRANSPOSE_CC)
-            self.log_message('BeatStep_Q: MIDI map built OK')
-        except Exception as e:
-            self.log_message('BeatStep_Q: build_midi_map ERROR: %s' % str(e))
+        h = self._c_instance.handle()
+        for note in PAD_MSG_IDS:
+            Live.MidiMap.forward_midi_note(h, midi_map_handle, _CHANNEL, note)
+        for cc in [BTN_SHIFT_CC, BTN_RECALL_CC, TRANSPOSE_CC] + [ENCODER_CC_BASE + i for i in range(16)]:
+            Live.MidiMap.forward_midi_cc(h, midi_map_handle, _CHANNEL, cc)
 
     # ------------------------------------------------------------------
     # Hardware setup
     # ------------------------------------------------------------------
 
     def _schedule_hardware_setup(self):
-        self.log_message('BeatStep_Q: scheduling hardware setup')
         if self._hw_task is not None:
             self._hw_task.kill()
         steps = [Task.wait(2.1), Task.run(self._send_setup_sysex)]
         self._hw_task = self._task_group.add(Task.sequence(*steps))
 
     def _send_setup_sysex(self):
-        self.log_message('BeatStep_Q: _send_setup_sysex running')
-        try:
-            # Pads: mode=9 (note gate), channel=CH10, behaviour=gate.
-            # Note numbers are NOT re-configured — factory defaults match PAD_MSG_IDS.
-            for i in range(16):
-                for msg in QSetup.setup_pad(i):
-                    self._send_midi(msg)
+        # Note and CC numbers are set explicitly so a different preset in the BeatStep can't break the mapping.
+        messages = []
+        for i, note in enumerate(PAD_MSG_IDS):
+            messages += QSetup.setup_pad(i, note)
+        messages += QSetup.setup_button(QSetup.RECALL_HW_INDEX, BTN_RECALL_CC)
+        messages += QSetup.setup_button(QSetup.SHIFT_HW_INDEX, BTN_SHIFT_CC)
+        for i in range(16):
+            messages += QSetup.setup_encoder(i, ENCODER_CC_BASE + i)
+        messages += QSetup.setup_transpose_encoder(TRANSPOSE_CC)
 
-            self.log_message('BeatStep_Q: pad sysex sent (%d pads, 3 msgs each)' % 16)
-
-            for msg in QSetup.setup_button(QSetup.RECALL_HW_INDEX):
-                self._send_midi(msg)
-
-            for msg in QSetup.setup_button(QSetup.SHIFT_HW_INDEX):
-                self._send_midi(msg)
-
-            # Encoders: relative mode 1, CH10, CC 10–25.
-            for i in range(16):
-                for msg in QSetup.setup_encoder(i, ENCODER_CC_BASE + i):
-                    self._send_midi(msg)
-
-            # Transpose encoder: relative mode 1, CH10, CC 26.
-            for msg in QSetup.setup_transpose_encoder(TRANSPOSE_CC):
-                self._send_midi(msg)
-
-            self.log_message('BeatStep_Q: all sysex sent OK')
-            self.request_rebuild_midi_map()
-            if self._cmix:
-                self._cmix.update_leds()
-        except Exception as e:
-            self.log_message('BeatStep_Q: ERROR in _send_setup_sysex: %s' % str(e))
+        for msg in messages:
+            self._send_midi(msg)
+        self.log_message('BeatStep_Q: %d setup sysex sent' % len(messages))
+        self._cmix.update_leds()
 
     # ------------------------------------------------------------------
     # MIDI receive
     # ------------------------------------------------------------------
 
     def receive_midi(self, midi_bytes):
-        # Log ALL incoming calls to confirm receive_midi is being invoked
-        if self._midi_log_count < 30:
-            self.log_message('BeatStep_Q: receive_midi len=%d bytes=%s' % (len(midi_bytes), list(midi_bytes[:4])))
-            self._midi_log_count += 1
-
         if len(midi_bytes) < 3:
             return
-        status = midi_bytes[0]
-        data1  = midi_bytes[1]
-        data2  = midi_bytes[2]
+        status, data1, data2 = midi_bytes[0], midi_bytes[1], midi_bytes[2]
 
-        if (status & 0xF0) == _NOTE_ON_MASK:
+        if status == _STATUS_NOTE_ON:
             self._handle_pad_note(data1, data2)
-        elif (status & 0xF0) == _NOTE_OFF_MASK:
+        elif status == _STATUS_NOTE_OFF:
             self._handle_pad_note(data1, 0)
-        elif status == _STATUS_CC_CH10:
+        elif status == _STATUS_CC:
             self._handle_cc(data1, data2)
-        elif status == _STATUS_CC_CH1:
-            # Handle function buttons before sysex configures them to CH10
-            self._handle_function_button(data1, data2)
 
     def _handle_pad_note(self, note, velocity):
-        """Handle Note On/Off CH10 — pad presses and releases in note gate mode."""
+        """Pad presses and releases in note gate mode."""
         if note not in _PAD_NOTE_TO_INDEX:
             return
         idx = _PAD_NOTE_TO_INDEX[note]
         if velocity > 0:
-            self.log_message('BeatStep_Q: pad press index=%d note=%d' % (idx, note))
             self._cmix.on_pad_press(idx)
         else:
             self._cmix.on_pad_release(idx)
 
     def _handle_cc(self, cc, value):
-        """Handle CC CH10 — encoders and function buttons."""
+        """Encoders and function buttons."""
         if ENCODER_CC_BASE <= cc < ENCODER_CC_BASE + 16:
             self._cmix.on_encoder(cc - ENCODER_CC_BASE, value)
         elif cc == TRANSPOSE_CC:
             self._cmix.on_transpose_encoder(value)
-        else:
-            self._handle_function_button(cc, value)
-
-    def _handle_function_button(self, cc, value):
-        """Handle SHIFT and RECALL on any channel."""
-        is_press = value > 0
-        if cc == BTN_SHIFT_CC:
-            if is_press:
+        elif cc == BTN_SHIFT_CC:
+            if value > 0:
                 self._cmix.on_shift_press()
             else:
                 self._cmix.on_shift_release()
-        elif cc == BTN_RECALL_CC and is_press:
+        elif cc == BTN_RECALL_CC and value > 0:
             self._cmix.on_recall_press()
-            self._schedule_hardware_setup()  # re-configure after BeatStep firmware preset recall
-
