@@ -172,7 +172,9 @@ class BeatStep(ControlSurface):
         if note not in _PAD_NOTE_TO_INDEX:
             return
         idx = _PAD_NOTE_TO_INDEX[note]
-        if velocity > 0:
+        if velocity > 0 and self._shift_held:
+            self._pads.toggle_solo(idx)
+        elif velocity > 0:
             was_picking = self._pads.picking_page
             self._pads.on_pad_press(idx)
             if self._pads.picking_page != was_picking:

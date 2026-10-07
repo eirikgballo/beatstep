@@ -15,7 +15,7 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 - The original repo [raphaelquast/beatstep](https://github.com/raphaelquast/beatstep) is a useful reference for sysex and
   MIDI Remote Script structure. This implementation is deliberately narrower in scope.
 - **Three encoder modes**, chosen with dedicated buttons: **Rack** (macros), **Volume** (track volumes), **Sends** (send A/B).
-- **Pads always select tracks** (single tap) and toggle solo (double tap), in every mode.
+- **Pads always select tracks** (tap) and toggle solo (`shift` + pad, without selecting), in every mode.
 - **Track pages** of 16 tracks, chosen with the page picker (`ext sync`, then pad N).
 
 ---
@@ -73,7 +73,7 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | Action | Result |
 |--------|--------|
 | Single tap pad N | Select track `page_start + N` |
-| Double tap pad N (≤ 400 ms) | First tap selects, second tap toggles solo. Solo is additive |
+| `shift` + pad N | Toggle solo on the track **without selecting it**. Solo is additive |
 | Tap a pad without a track | Nothing |
 
 ### Encoders
@@ -116,13 +116,14 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 | `chan` | Rack mode |
 | `recall` | Volume mode |
 | `store` | Sends mode |
-| `shift` | Modifier for `shift` + transpose (master volume) |
+| `shift` | Modifier for `shift` + pad (solo) and `shift` + transpose (master volume) |
 | `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
 | `play`, `stop` | Firmware starts/stops its sequencer. Script only repaints on release |
 | `ext sync` | Opens the page picker, or closes it without changing page |
 
 > Firmware side effects (see SIGNALS.md): `recall`/`store` + pad recalls/stores a preset, `chan` + pad changes the
-> global MIDI channel, `shift` + pad changes sequencer settings. None of these combinations are used.
+> global MIDI channel, `shift` + pad changes sequencer settings (harmless, the sequencer is not used).
+> Only `shift` + pad is used deliberately.
 
 ---
 
@@ -134,7 +135,7 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 |---------|-------|
 | No track at this position | black |
 | Track, not selected, not soloed | blue |
-| Track soloed, not selected | magenta |
+| Track soloed, not selected | blinks magenta/off (0.3 s per phase) |
 | Track selected | red |
 | Track selected **and** soloed | blinks red/magenta (0.3 s per phase) |
 
@@ -217,7 +218,8 @@ parameter range. The first tick after a pause (no previous tick) counts as slow,
 
 **Parameter writes**: always clamp to `[param.min, param.max]`. Macro range is 0–127, volume and sends 0–1.
 
-**Double tap**: first tap selects, second tap within 400 ms on the same pad and track toggles solo.
+**Solo gesture**: `shift` + pad. A double tap was tried first; selecting on the first tap made it impossible to
+solo without selecting, and delaying the selection by 400 ms felt too slow.
 
 **Blink**: driven from `update_display` (~100 ms). A LED message is only sent when the blink phase changes.
 

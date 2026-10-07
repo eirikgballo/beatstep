@@ -33,8 +33,14 @@ def main():
     out = []
 
     def step(label, fn=None, dt=0.0):
-        clock.now += dt
+        # Time passes before the action, with update_display ticking every 100 ms like in Live.
+        # Messages sent while ticking belong to this step.
         start = len(h.sent)
+        end = clock.now + dt
+        while clock.now + 0.1 <= end:
+            clock.now += 0.1
+            h.tick()
+        clock.now = end
         if fn:
             fn()
         sent = ' '.join(''.join('%02X' % b for b in m[8:11]) for m in h.sent[start:])
@@ -55,8 +61,14 @@ def main():
     step('pad 3 slipp', lambda: h.receive((0x89, 46, 0)), 0.05)
     step('pad 6 trykk', lambda: h.receive((0x99, 49, 127)), 1.0)
     step('pad 6 slipp', lambda: h.receive((0x89, 49, 0)), 0.05)
-    step('pad 6 trykk 2 (solo)', lambda: h.receive((0x99, 49, 127)), 0.1)
+    step('shift trykk', lambda: h.receive((0xB9, 7, 127)), 0.5)
+    step('shift+pad 6 (solo, valgt)', lambda: h.receive((0x99, 49, 127)), 0.1)
     step('pad 6 slipp', lambda: h.receive((0x89, 49, 0)), 0.05)
+    step('shift+pad 8 (solo, ikke valgt)', lambda: h.receive((0x99, 51, 127)), 0.3)
+    step('pad 8 slipp', lambda: h.receive((0x89, 51, 0)), 0.05)
+    step('shift+pad 8 (solo av)', lambda: h.receive((0x99, 51, 127)), 0.3)
+    step('pad 8 slipp', lambda: h.receive((0x89, 51, 0)), 0.05)
+    step('shift slipp', lambda: h.receive((0xB9, 7, 0)), 0.1)
     step('blink 1 s', lambda: ticks(1.0))
     step('pad 1 trykk', lambda: h.receive((0x99, 44, 127)), 1.0)
     step('pad 1 slipp', lambda: h.receive((0x89, 44, 0)), 0.05)
