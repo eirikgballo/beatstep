@@ -61,6 +61,14 @@ på nytt når store, recall, chan, shift eller cntrl/seq slippes.
 Burst-grensen på cirka 4 meldinger og behovet for 1,5 s pause før LED-maling lar seg ikke gjenskape fra Windows.
 Feilen sett i Live skyldes trolig Live sin egen sysex-utsending (`_send_midi`), ikke BeatStep-firmwaren.
 
+## Live mister utgående MIDI (målt på Mac, Live 11.3)
+
+- 164 oppsett-sysex + 23 LED sendt i én byge: `_send_midi` svarte `True` på alle, men bare et tilfeldig
+  utvalg kom fram (pad 1, 2, 5, 10, 11, 12, 14 lyste). Padene fikk ikke oppsettet og sendte ingenting på CH10.
+- Fra Windows direkte til USB kommer alt fram, så det er Live som dropper, ikke BeatStep-firmwaren.
+- Scriptet sender derfor via en kø, maks `MIDI_MESSAGES_PER_TICK` per `update_display` (100 ms).
+  Startverdi 4, basert på den eldste observasjonen fra Live (bare ~4 av 17 LED tente). Ikke målt eksakt ennå.
+
 ## Innkommende fra pads
 
 - Trykk: note on på CH10 (`99 <note> <vel>`). Pad 1 = note 44.

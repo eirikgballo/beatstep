@@ -12,22 +12,22 @@ def _setup_messages(sent):
 def test_setup_is_sent_after_2_1_seconds(clock):
     rig = Rig(Harness(default_song()), clock)
     rig.advance(2.0)
-    assert _setup_messages(rig.h.sent) == []
+    assert _setup_messages(rig.sent) == []
     rig.advance(0.2)
-    assert len(_setup_messages(rig.h.sent)) > 0
+    assert len(_setup_messages(rig.sent)) > 0
 
 
 def test_setup_sets_pad_notes_explicitly(clock):
     rig = Rig(Harness(default_song()), clock)
     rig.advance(2.2)
-    notes = {m[9] - 0x70: m[10] for m in _setup_messages(rig.h.sent) if m[8] == 0x03 and 0x70 <= m[9] <= 0x7F}
+    notes = {m[9] - 0x70: m[10] for m in _setup_messages(rig.sent) if m[8] == 0x03 and 0x70 <= m[9] <= 0x7F}
     assert notes == {i: note for i, note in enumerate(PAD_NOTES)}
 
 
 def test_setup_configures_every_button_as_cc(clock):
     rig = Rig(Harness(default_song()), clock)
     rig.advance(2.2)
-    ccs = {m[9]: m[10] for m in _setup_messages(rig.h.sent) if m[8] == 0x03 and 0x58 <= m[9] <= 0x5F}
+    ccs = {m[9]: m[10] for m in _setup_messages(rig.sent) if m[8] == 0x03 and 0x58 <= m[9] <= 0x5F}
     assert ccs == {0x58: 28, 0x59: 29, 0x5A: 30, 0x5B: 31, 0x5C: 5, 0x5D: 32, 0x5E: 7, 0x5F: 33}
 
 

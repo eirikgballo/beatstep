@@ -90,14 +90,22 @@ class Rig:
 
     # --- output ----------------------------------------------------------
 
+    @property
+    def sent(self):
+        """All MIDI sent so far. The outgoing queue is drained first, so the tests see the result of an
+        action without waiting for update_display ticks. The rate limit itself is tested in test_queue.py."""
+        self.h.script._flush_midi(limit=None)
+        return self.h.sent
+
     def clear(self):
+        self.h.script._flush_midi(limit=None)
         del self.h.sent[:]
         del self.h.messages[:]
 
     def leds(self):
         """Siste farge sendt til hver pad 1–16 (None hvis ingen er sendt siden clear())."""
         colors = {n: None for n in range(1, 17)}
-        for m in self.h.sent:
+        for m in self.sent:
             if len(m) == 12 and m[8] == 0x10 and 0x70 <= m[9] <= 0x7F:
                 colors[m[9] - 0x70 + 1] = m[10]
         return colors
@@ -106,7 +114,7 @@ class Rig:
         """Siste verdi sendt til hvert knappelys, etter navn."""
         names = {hw: name for name, hw in BUTTON_HW.items()}
         state = {}
-        for m in self.h.sent:
+        for m in self.sent:
             if len(m) == 12 and m[8] == 0x10 and m[9] in names:
                 state[names[m[9]]] = m[10]
         return state

@@ -7,6 +7,8 @@ every connection so controller state is always deterministic.
 See DESIGN.md for the full specification and SIGNALS.md for measured hardware behaviour.
 """
 
+from collections import OrderedDict
+
 import Live
 
 from _Framework.ControlSurface import ControlSurface
@@ -65,8 +67,13 @@ PAD_MSG_IDS = [
     36, 37, 38, 39, 40, 41, 42, 43,   # hw 0x78–0x7F
 ]
 
-# Temporary: log incoming MIDI and _send_midi results to Log.txt while debugging on the Mac.
+# Temporary: log incoming MIDI and the outgoing queue to Log.txt while debugging on the Mac.
 DEBUG_MIDI = True
+
+# Live drops outgoing MIDI when a script sends too much at once (measured on the Mac: a burst of
+# ~190 sysex arrived only partly). Messages are queued and sent at most this many per update_display
+# tick (100 ms). See SIGNALS.md.
+MIDI_MESSAGES_PER_TICK = 4
 
 # Reverse-lookup map built once at import time for O(1) dispatch.
 _PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
@@ -82,13 +89,16 @@ class BeatStep(ControlSurface):
         ControlSurface.__init__(self, c_instance)
         self._hw_task = None
         self._debug_count = 0
+        # Outgoing sysex, keyed by (cmd, hw index): a newer value for the same LED or setting
+        # replaces the queued one, so blinking and repaints don't pile up.
+        self._midi_queue = OrderedDict()
         self._shift_held = False
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
         self._pads = TrackPads(
             song         = self.song(),
             show_message = self.show_message,
-            send_midi    = self._send_midi,
+            send_midi    = self._queue_midi,
         )
         self._accelerator = Accelerator()
         # Mode button CC → mode. The script always boots in Rack mode.
@@ -113,12 +123,14 @@ class BeatStep(ControlSurface):
         self._pads.cleanup()
         for hw, _ in _BUTTONS:
             if hw != Sysex.STOP_HW_INDEX:
-                self._send_midi(Sysex.set_button_led(hw, False))
+                self._queue_midi(Sysex.set_button_led(hw, False))
+        self._flush_midi(limit=None)  # Live stops ticking after disconnect, so send everything now
         ControlSurface.disconnect(self)
 
     def update_display(self):
         ControlSurface.update_display(self)
         self._pads.tick()
+        self._flush_midi()
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
@@ -150,12 +162,9 @@ class BeatStep(ControlSurface):
             messages += Sysex.setup_encoder(i, ENCODER_CC_BASE + i)
         messages += Sysex.setup_transpose_encoder(TRANSPOSE_CC)
 
-        results = [self._send_midi(msg) for msg in messages]
-        self.log_message('BeatStep: %d setup sysex sent' % len(messages))
-        if DEBUG_MIDI:
-            self.log_message('BeatStep: _send_midi results: %d True, %d False, %d other (%r)' % (
-                results.count(True), results.count(False),
-                len(results) - results.count(True) - results.count(False), results[-1]))
+        for msg in messages:
+            self._queue_midi(msg)
+        self.log_message('BeatStep: %d setup sysex queued' % len(messages))
         self._update_leds()
 
     # ------------------------------------------------------------------
@@ -229,11 +238,27 @@ class BeatStep(ControlSurface):
             if hw == Sysex.STOP_HW_INDEX:
                 continue
             if cc == BTN_CNTRL_CC:
-                self._send_midi(Sysex.set_button_led(hw, self._seq_mode, Sysex.COLOR_RED))
+                self._queue_midi(Sysex.set_button_led(hw, self._seq_mode, Sysex.COLOR_RED))
             elif cc == BTN_EXTSYNC_CC:
-                self._send_midi(Sysex.set_button_led(hw, self._pads.picking_page))
+                self._queue_midi(Sysex.set_button_led(hw, self._pads.picking_page))
             else:
-                self._send_midi(Sysex.set_button_led(hw, self._modes.get(cc) is self._mode))
+                self._queue_midi(Sysex.set_button_led(hw, self._modes.get(cc) is self._mode))
+
+    # ------------------------------------------------------------------
+    # Outgoing MIDI queue
+    # ------------------------------------------------------------------
+
+    def _queue_midi(self, msg):
+        key = msg[8:10]  # (cmd, hw index) of a BeatStep sysex message
+        self._midi_queue[key] = msg
+
+    def _flush_midi(self, limit=MIDI_MESSAGES_PER_TICK):
+        count = len(self._midi_queue) if limit is None else min(limit, len(self._midi_queue))
+        for _ in range(count):
+            _, msg = self._midi_queue.popitem(last=False)
+            self._send_midi(msg)
+        if DEBUG_MIDI and count and not self._midi_queue:
+            self.log_message('BeatStep: MIDI queue drained')
 
     def _on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track in every mode, or master with shift held."""

@@ -42,6 +42,9 @@ class Sim:
         self._mtimes = {}
         self._snapshot = {}
         self._pending_leds = []
+        self.live_limit = args.live_limit
+        self._sent_this_tick = 0
+        self._dropped = 0
 
     # ------------------------------------------------------------------
 
@@ -53,6 +56,11 @@ class Sim:
             self.log.flush()
 
     def _send(self, midi_bytes):
+        # --live-limit: like Live on the Mac, only N messages get through between two ticks.
+        self._sent_this_tick += 1
+        if self.live_limit and self._sent_this_tick > self.live_limit:
+            self._dropped += 1
+            return
         self.out.send(mido.Message.from_bytes(list(midi_bytes)))
         self._pending_leds.append(midi_bytes)
 
@@ -194,7 +202,11 @@ class Sim:
                     next_tick += 0.1
                     if self.harness:
                         try:
+                            self._sent_this_tick = 0
                             self.harness.tick()
+                            if self._dropped:
+                                self.emit('   DROPPET %d meldinger (--live-limit %d)' % (self._dropped, self.live_limit))
+                                self._dropped = 0
                         except Exception as e:
                             self.emit('FEIL i update_display: %r' % e)
                         self._after_event()
@@ -216,6 +228,8 @@ def main():
     p.add_argument('--port', default='Arturia BeatStep')
     p.add_argument('--tracks', type=int, default=20)
     p.add_argument('--log')
+    p.add_argument('--live-limit', type=int, default=0,
+                   help='etterlign Live: maks N utgående meldinger per tick, resten droppes (0 = av)')
     Sim(p.parse_args()).run()
 
 

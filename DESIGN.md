@@ -198,10 +198,14 @@ Return tracks and the master track are not addressable from the pads. Master vol
 
 **Target**: Ableton Live 11 (Python 3.7). Do not use syntax newer than 3.7.
 
-**Hardware setup**: Sent once, 2.1 s after connection (`port_settings_changed`), then a full LED paint immediately after.
-Measured on hardware: the BeatStep accepts all setup sysex and 16 LED messages back to back without loss
-(SIGNALS.md). Earlier notes about a 4-message burst limit and a 1.5 s pause did not reproduce outside Live.
-If LEDs go missing in Live, check Live's `Log.txt` for MIDI buffer errors before adding throttling.
+**Hardware setup**: Queued once, 2.1 s after connection (`port_settings_changed`), followed by a full LED paint.
+The BeatStep itself accepts any burst (measured from Windows), but Live does not, hence the outgoing queue.
+
+**Outgoing MIDI queue**: Live drops outgoing MIDI when a script sends a large burst (measured on the Mac,
+see SIGNALS.md). All sysex goes through a queue in `BeatStep`, sent at most `MIDI_MESSAGES_PER_TICK` per
+`update_display` tick. A newer value for the same LED or setting replaces the queued one. Setup takes ~5 s,
+a full repaint ~0.6 s. `disconnect` sends the whole queue at once, since Live stops ticking after it.
+Blinks that touch all 16 pads must use a phase long enough for the queue to keep up (`WARNING_BLINK_INTERVAL`).
 
 **No re-setup on button presses**: the old re-setup on every `recall` press is removed. A preset recall from
 the firmware (`recall` + pad) is the only case that changes the hardware config; it is not handled.

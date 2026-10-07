@@ -33,9 +33,9 @@ def test_cntrl_enters_sequencer_mode_with_warning(rig):
 def test_all_pads_blink_red_in_sequencer_mode(rig):
     rig.press('cntrl')
     rig.clear()
-    rig.advance(1.0)
+    rig.advance(2.0)
     for pad in range(1, 17):
-        colors = {m[10] for m in rig.h.sent if len(m) == 12 and m[8] == 0x10 and m[9] == 0x70 + pad - 1}
+        colors = {m[10] for m in rig.sent if len(m) == 12 and m[8] == 0x10 and m[9] == 0x70 + pad - 1}
         assert colors == {RED, OFF}
 
 

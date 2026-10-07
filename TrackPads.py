@@ -10,7 +10,10 @@ import time
 
 from . import Sysex
 
-BLINK_INTERVAL = 0.3   # seconds per blink phase (solo pads and the sequencer mode warning)
+BLINK_INTERVAL = 0.3   # seconds per blink phase for solo pads
+# The warning blinks all 16 pads, which takes 4 ticks with the outgoing MIDI queue (see BeatStep.py),
+# so it needs a slower phase than the solo blink.
+WARNING_BLINK_INTERVAL = 0.8
 PADS_PER_PAGE = 16
 
 
@@ -109,7 +112,8 @@ class TrackPads:
 
     def tick(self):
         """Called every ~100 ms from update_display. Drives the solo blink and the sequencer mode warning."""
-        blink_on = int(time.monotonic() / BLINK_INTERVAL) % 2 == 0
+        interval = WARNING_BLINK_INTERVAL if self.suspended else BLINK_INTERVAL
+        blink_on = int(time.monotonic() / interval) % 2 == 0
         if blink_on == self._blink_on:
             return
         self._blink_on = blink_on

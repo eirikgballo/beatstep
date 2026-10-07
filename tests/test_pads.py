@@ -8,7 +8,7 @@ def _colors_over(rig, pad, seconds):
     """Alle farger sendt til en pad mens tiden går."""
     rig.clear()
     rig.advance(seconds)
-    return {m[10] for m in rig.h.sent if len(m) == 12 and m[8] == 0x10 and m[9] == 0x70 + pad - 1}
+    return {m[10] for m in rig.sent if len(m) == 12 and m[8] == 0x10 and m[9] == 0x70 + pad - 1}
 
 
 def test_tap_selects_track_immediately(rig):
