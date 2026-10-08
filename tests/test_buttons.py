@@ -128,6 +128,58 @@ def test_stop_alone_starts_playback_from_the_playhead_when_stopped(marker_rig):
     assert marker_rig.song.current_song_time == 12.0
 
 
+def test_play_after_scrubbing_while_stopped_starts_from_the_new_position(marker_rig):
+    song = marker_rig.song
+    song.current_song_time = 16.0
+    song.is_playing = True
+    marker_rig.press('stop')                                   # stopped at 16
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose', value=1, ticks=4)             # scrub one beat forward
+    marker_rig.button_up('stop')
+    assert not song.is_playing
+    marker_rig.press('stop')
+    assert song.is_playing and song.current_song_time == 17.0
+
+
+def test_scrubbing_after_stop_starts_from_where_it_stopped(marker_rig):
+    # Seen in Live: play from A, scrub to B while playing, stop. Scrubbing then jumped back to A first.
+    song = marker_rig.song
+    song.current_song_time = 8.0                               # A
+    song.start_playing()
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose', value=1, ticks=4)             # to B = 9 while playing
+    marker_rig.button_up('stop')
+    marker_rig.press('stop')                                   # stop at B
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose', value=1, ticks=1)
+    marker_rig.button_up('stop')
+    assert song.current_song_time == 9.25
+    marker_rig.press('stop')
+    assert song.is_playing and song.current_song_time == 9.25
+
+
+def test_play_without_scrubbing_continues_where_it_stopped(marker_rig):
+    song = marker_rig.song
+    song.current_song_time = 16.0
+    song.is_playing = True
+    marker_rig.press('stop')
+    marker_rig.press('stop')
+    assert song.is_playing and song.current_song_time == 16.0
+
+
+def test_scrub_is_forgotten_when_playback_was_started_from_live(marker_rig):
+    song = marker_rig.song
+    song.current_song_time = 16.0
+    song.is_playing = True
+    marker_rig.press('stop')
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose')
+    marker_rig.button_up('stop')
+    song.start_playing()                                       # space bar in Live
+    marker_rig.advance(0.2)
+    assert not marker_rig.h.script._scrubbed_while_stopped
+
+
 def test_scrubbing_while_stopped_does_not_start_playback(marker_rig):
     marker_rig.button_down('stop')
     marker_rig.turn('transpose')

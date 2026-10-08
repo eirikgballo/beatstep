@@ -70,6 +70,18 @@ på nytt når store, recall, chan, shift eller cntrl/seq slippes.
 - Etter chan + pad 3 sender pads og encodere fortsatt på CH10 (pad 5 og encoder 2 målt), siden scriptet setter
   kanalen fast på hver kontroll.
 
+## Live: transport fra scriptet (observert av brukeren 2026-10-08)
+
+Live holder tre posisjoner fra hverandre når låta står stille:
+
+- Låta stoppes, `song.jump_by()` flytter posisjonen, så `song.continue_playing()`:
+  Live spiller fra der låta ble stoppet, ikke fra den nye posisjonen.
+- Samme, men med `song.start_playing()` i stedet: Live spiller fra den nye posisjonen (bekreftet).
+- Spill fra A, scrub til B mens låta spiller, stopp. `song.jump_by()` i stillstand flytter da nåla tilbake til A
+  og regner derfra. `jump_by()` i stillstand går altså ut fra der avspillingen ble startet, ikke der nåla står.
+- Scriptet setter derfor `song.current_song_time` direkte når det scrubbes i stillstand. Da regnes det fra der
+  nåla står (B), og `start_playing()` spiller fra den nye posisjonen (bekreftet av brukeren).
+
 ## Burst og timing
 
 - 16 LED-meldinger sendt uten pause: alle 16 tenner.

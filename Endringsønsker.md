@@ -43,8 +43,11 @@ Mal:
     stop + pad 16 spiller fra loopstart (pad 16 lyser magenta), stop + transpose scrubber i tidslinja.
   - Maks 15 markører, siden pad 16 er loopstart.
   - Bekreftet i Live 2026-10-08: stop alene stopper, scrub virker både med og uten avspilling.
-  - Justert etter prøve (må prøves): stop alene starter avspilling fra spillehodet når låta står stille,
-    og scrub er finere (1/4 slag per hakk sakte, opptil 4 slag fort, mot 1–8 før).
+  - Justert etter prøve: stop alene starter avspilling når låta står stille, og scrub er finere
+    (1/4 slag per hakk sakte, opptil 4 slag fort, mot 1–8 før).
+  - Rettet og bekreftet i Live: avspilling etter scrubbing i stillstand starter fra den nye posisjonen,
+    og scrubbing etter stopp regner fra der nåla står (se `SIGNALS.md`).
+  - Ikke bekreftet: stop + pad 16 (loopstart) mens låta står stille.
 
 ### Følelsen i Volum- og Sends-modus
 - **Dato:** 2026-10-07

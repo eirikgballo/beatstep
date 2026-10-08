@@ -111,6 +111,7 @@ class BeatStep(ControlSurface):
         self._ticks = 0
         self._load_settings(announce=False)
         self._stop_used = False  # a pad or the transpose knob was used while stop was held
+        self._scrubbed_while_stopped = False
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
         self._pads = TrackPads(
@@ -153,6 +154,8 @@ class BeatStep(ControlSurface):
         self._ticks += 1
         if self._ticks % SETTINGS_CHECK_TICKS == 0:
             self._load_settings(announce=True)
+        if self._scrubbed_while_stopped and self.song().is_playing:
+            self._scrubbed_while_stopped = False  # playback was started from Live, the scrub is used up
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
@@ -274,8 +277,13 @@ class BeatStep(ControlSurface):
                     # since on press the script can't know whether a pad or the knob will follow.
                     if self.song().is_playing:
                         self.song().stop_playing()
+                    elif self._scrubbed_while_stopped:
+                        # continue_playing() would go back to where the song was stopped and ignore the
+                        # scrubbing (seen in Live). start_playing() plays from where the scrub left off.
+                        self.song().start_playing()
                     else:
                         self.song().continue_playing()
+                    self._scrubbed_while_stopped = False
             elif cc == BTN_EXTSYNC_CC and value > 0 and self._shift_held:
                 self._toggle_main_view()
             elif cc == BTN_EXTSYNC_CC and value > 0:
@@ -370,7 +378,14 @@ class BeatStep(ControlSurface):
         if beats is None:
             return
         song = self.song()
-        song.jump_by(max(beats, -song.current_song_time))  # not past the start of the song
+        beats = max(beats, -song.current_song_time)  # not past the start of the song
+        if song.is_playing:
+            song.jump_by(beats)
+        else:
+            # Not jump_by(): while stopped it moves from where playback was started, so the needle
+            # jumps back there first (seen in Live). Setting the time moves it from where it stands.
+            song.current_song_time = song.current_song_time + beats
+            self._scrubbed_while_stopped = True
 
     def _on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track in every mode. With shift held it resets the

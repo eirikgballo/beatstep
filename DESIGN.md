@@ -139,7 +139,7 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 | `store` | Sends mode |
 | `shift` | Modifier for `shift` + pad (solo), `shift` + encoder and `shift` + transpose (reset to default), and `shift` + `ext sync` (switch between Session and Arrangement, like Tab) |
 | `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
-| `stop` | Pressed on its own: stops playback in Live, or starts it from the playhead if the song is stopped (on release). Held: the pads show the markers (blue = marker exists) and the loop start (pad 16, magenta), `stop` + pad plays from there, and `stop` + transpose scrubs. Firmware also sends MIDI Stop, which Live ignores |
+| `stop` | Pressed on its own: stops playback in Live, or starts it if the song is stopped (on release): from where it stopped, or from the new position if it was scrubbed while stopped. Held: the pads show the markers (blue = marker exists) and the loop start (pad 16, magenta), `stop` + pad plays from there, and `stop` + transpose scrubs. Firmware also sends MIDI Stop, which Live ignores |
 | `play` | Firmware starts its sequencer. Script only repaints on release |
 | `ext sync` | Opens the page picker, or closes it without changing page |
 

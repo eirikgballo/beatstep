@@ -152,6 +152,7 @@ class CuePoint:
 
     def jump(self):
         self._song.current_song_time = self.time
+        self._song._continue_from = self.time
 
 
 class Song(_Listenable):
@@ -161,7 +162,13 @@ class Song(_Listenable):
         self._tracks = list(tracks)
         self.cue_points = ()
         self.is_playing = False
-        self.current_song_time = 0.0
+        # Transporten slik brukeren har sett den oppføre seg i Live (se SIGNALS.md):
+        #   _time           nåla, det current_song_time viser
+        #   _insert         der start_playing() spiller fra. jump_by() i stillstand regner herfra.
+        #   _continue_from  der continue_playing() tar opp igjen: stedet låta ble stoppet
+        self._time = 0.0
+        self._insert = 0.0
+        self._continue_from = None
         self.loop_start = 0.0
         self.master_track = MasterTrack()
         self.view = _SongView(self._tracks[0] if self._tracks else self.master_track)
@@ -176,16 +183,36 @@ class Song(_Listenable):
     def remove_tracks_listener(self, fn):
         self._remove('tracks', fn)
 
+    @property
+    def current_song_time(self):
+        return self._time
+
+    @current_song_time.setter
+    def current_song_time(self, time):
+        if time < 0:
+            raise RuntimeError('Invalid song time %r' % time)
+        self._time = time
+        if not self.is_playing:
+            self._insert = time      # i stillstand flytter dette også startpunktet
+
     def continue_playing(self):
+        if self._continue_from is not None:
+            self._time = self._continue_from
+        self.is_playing = True
+
+    def start_playing(self):
+        self._time = self._insert
         self.is_playing = True
 
     def stop_playing(self):
         self.is_playing = False
+        self._continue_from = self._time
 
     def jump_by(self, beats):
-        if self.current_song_time + beats < 0:
-            raise RuntimeError('Invalid song time %r' % (self.current_song_time + beats))
-        self.current_song_time += beats
+        if self.is_playing:
+            self.current_song_time = self._time + beats
+        else:
+            self.current_song_time = self._insert + beats
 
     # Hjelpere for å simulere endringer gjort i Live-UI-et.
 
