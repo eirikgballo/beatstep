@@ -34,7 +34,7 @@ som egen kommando (`readback`).
 
 - **Ikke testet i Live ennå:** Volum- og Sends-modus (bare at knappene sender riktig CC), sidevelger på ext sync,
   sequencer-varselet, følelsen i Volum/Sends (`KNOB_FEEL`).
-- **`DEBUG_MIDI` er fortsatt på.** Den skriver «MIDI queue drained» i Log.txt hvert 0,3 s så lenge et spor står i solo.
+- `DEBUG_MIDI` i `BeatStep.py` er slått av. Slå den på for å måle forsinkelse fra pad til script (`IN`-linjer i Log.txt).
 - **`tools/bs.py` henger etter scriptet:** `setup` sender 140 meldinger (scriptet sender 164), `listen` kjenner ikke
   CC 28–33 (viser «ukjent»), og porten lukkes rett etter sending, som kan miste meldinger på Mac.
 - **Falsk Live gir alltid samme sporobjekt**, så testene kunne ikke fange `is`-feilen. Vurder å la den gi nye

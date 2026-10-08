@@ -68,8 +68,8 @@ PAD_MSG_IDS = [
     36, 37, 38, 39, 40, 41, 42, 43,   # hw 0x78–0x7F
 ]
 
-# Temporary: log incoming MIDI and the outgoing queue to Log.txt while debugging on the Mac.
-DEBUG_MIDI = True
+# Set to True to log incoming MIDI (the first 50 messages) and the outgoing queue to Live's Log.txt.
+DEBUG_MIDI = False
 
 # The BeatStep loses sysex that arrives less than ~1 ms apart (measured on the Mac, see SIGNALS.md),
 # so the script waits this long between messages.
