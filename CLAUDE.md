@@ -34,7 +34,7 @@ en kombinasjon konkluderes med å ikke virke.
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests                 # 75 tester, ingen hardware
+.venv/bin/python -m pytest tests                 # 135 tester, ingen hardware
 .venv/bin/python tools/bs.py ports               # MIDI-porter
 .venv/bin/python tools/bs.py listen --log logs/x.log   # logg alt BeatStepen sender
 .venv/bin/python tools/bs.py --gap 5 led 1 2 3 --color red

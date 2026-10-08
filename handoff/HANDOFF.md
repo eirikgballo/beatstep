@@ -1,42 +1,80 @@
-# Overlevering — status 2026-10-08
+# Overlevering — status 2026-10-08 (kveld)
 
-Mac-feilen er funnet og rettet. Scriptet virker i Live 11.3.43 på Macen: oppsettet kommer fram, og pads, encodere,
-solo og Rack-modus er bekreftet av brukeren på hardware.
+Scriptet virker i Live 11.3.43 på Macen. Mac-feilen fra forrige overlevering er løst, og det er lagt til
+nullstilling, transport, variasjonsvelger, visningsbytte og en innstillingsfil. Alt er committet lokalt på
+`first-refactoring`, men **ikke pushet**: denne Macen mangler GitHub-innlogging for git (`gh` er ikke installert),
+så brukeren må kjøre `git push` selv. Branchen ligger 9 commits foran GitHub (10 med denne overleveringen).
 
-## Hva som var galt
+## Grepene slik de er nå
 
-1. **BeatStepen mister sysex som kommer tettere enn ca. 1 ms.** Målt direkte fra Macen uten Live: 0 ms avstand
-   mister 61–68 av 164, 2 ms eller mer mister ingen. Med 4 meldinger per tick fra Live kom bare 94 av 164 fram
-   (alle kanal-meldinger manglet). Tall og målemetode står i `SIGNALS.md`.
-   **Fiks:** `MIDI_MESSAGE_GAP = 0.003` i `BeatStep.py`, `time.sleep` mellom meldingene i `_flush_midi`.
-   Etter omstart av Live: 164 av 164 riktige ved tilbakelesing (målt med 4 per tick).
-2. **Valgt spor ble ikke rødt.** `TrackPads.py` sammenlignet spor med `is`. Byttet til `==`.
-   Antatt årsak: Live gir et nytt Python-objekt for samme spor ved hvert oppslag. Brukeren bekreftet at det
-   virker etter omstart, men selve antakelsen er ikke målt.
-3. **Padden ble mørk en stund før den ble rød.** Firmwaren slukker padden ved slipp, og fargen ventet i køen
-   bak ny maling av alle 16 pads (4 per tick). **Fiks:** fargen til en sluppet pad går forbi køen og sendes straks
-   (`urgent` i `_queue_midi`), og `MIDI_MESSAGES_PER_TICK` er økt fra 4 til 16.
-   Målt etter omstart: 164 av 164 riktige med 16 per tick. Brukeren merket bedring, men fortsatt en liten
-   forsinkelse, særlig rett etter oppstart.
-4. **Resten av forsinkelsen ligger i Live.** Live leverer pad-hendelser til scriptet median 40 ms sent, og slipp
-   kom ofte senere enn trykk (se `SIGNALS.md`). Mulig årsak: ny maling av 16 pads blokkerte hovedtråden i ca. 50 ms.
-   **Fiks:** `TrackPads` sender bare farger som er endret (`_shown`), unntatt etter oppsett, pad-slipp og
-   knappeslipp, der firmwaren har malt over. Målt etter omstart: trykk median 8 ms, slipp median 18 ms (maks 32).
-   Brukeren bekreftet at det ser bra ut.
+| Grep | Gjør |
+|---|---|
+| pad | Velg spor |
+| shift + pad | Solo av/på uten å velge sporet |
+| shift + encoder | Nullstill parameteren til standardverdi (makro, volum, send) |
+| shift + transpose-hjulet | Nullstill volumet på valgt spor. Master-volum har ingen kontroll lenger |
+| shift + ext sync | Bytt mellom Session og Arrangement (som Tab) |
+| ext sync | Sidevelger (16 spor per side) |
+| chan / recall / store | Rack-, Volum- og Sends-modus |
+| chan en gang til i Rack-modus | Variasjonsvelger: pad N henter makro-variasjon N (rød = valgt, magenta = finnes). Chan lukker |
+| stop alene | Stopp, eller start avspilling (fra stoppunktet, eller fra dit det er scrubbet) |
+| stop + pad 1–15 | Spill fra markør N (blå pads mens stop holdes) |
+| stop + pad 16 | Spill fra loopstart (magenta pad) |
+| stop + transpose-hjulet | Scrub i tidslinja |
 
-## Nyttig måleverktøy (ikke i repoet ennå)
+Følsomheten justeres i `Innstillinger.py`: to tall 1–10 (rolig, rask) per modus og `KAST` (hvor fort man må spinne
+for fullt steg). Fila leses på nytt mens Live kjører. Brukerens verdier nå: `RACK = (4, 8)`, `KAST = 5`.
 
-BeatStepen svarer på lesing av én parameter: `F0 00 20 6B 7F 42 01 00 <cmd> <hw> F7`. Hele oppsettet kan leses
-tilbake og sammenlignes med det scriptet sender. Det ble gjort med et engangsscript. Bør inn i `tools/bs.py`
-som egen kommando (`readback`).
+## Det viktigste som ble funnet (detaljer og tall i `SIGNALS.md`)
 
-## Gjenstår
+- **BeatStepen mister sysex som kommer tettere enn ca. 1 ms.** Scriptet venter 3 ms mellom meldingene og sender
+  opptil 16 per tick. Tilbakelesing fra BeatStepen viste 164 av 164 innstillinger riktige.
+- **BeatStepen kan leses tilbake:** `F0 00 20 6B 7F 42 01 00 <cmd> <hw> F7` gir verdien til én innstilling.
+- **Pad-lys:** firmwaren slukker padden ved slipp. Fargen sendes straks ved slipp, og bare endrede farger sendes
+  ellers, så Lives hovedtråd ikke blokkeres. Levering fra pad til script: median 8 ms trykk, 18 ms slipp.
+- **Chan + pad sender ingenting** (firmwaren bytter global MIDI-kanal). Chan + encoder sender som normalt.
+  Stop + pad og shift + pad sender noter.
+- **Encoder-fart:** vanlig vridning er 10–40 hakk/s, raskt spinn 70–900. Tid mellom to enkelthakk var for urolig,
+  så farten måles nå som antall hakk siste 0,1 s.
+- **Transport i Live:** `continue_playing()` går alltid tilbake til stoppunktet. `jump_by()` i stillstand regner
+  fra startmarkøren, ikke nåla. Live utfører flytting etter at scriptet har returnert, så posisjonen kan ikke
+  leses tilbake i samme kall. Scriptet holder selv rede på posisjonen under scrubbing i stillstand, setter
+  `current_song_time`, starter med `start_playing()` og sjekker de første tickene at avspillingen havnet riktig.
 
-- **Ikke testet i Live ennå:** Volum- og Sends-modus (bare at knappene sender riktig CC), sidevelger på ext sync,
-  sequencer-varselet, følelsen i Volum/Sends (`KNOB_FEEL`).
-- `DEBUG_MIDI` i `BeatStep.py` er slått av. Slå den på for å måle forsinkelse fra pad til script (`IN`-linjer i Log.txt).
-- **`tools/bs.py` henger etter scriptet:** `setup` sender 140 meldinger (scriptet sender 164), `listen` kjenner ikke
-  CC 28–33 (viser «ukjent»), og porten lukkes rett etter sending, som kan miste meldinger på Mac.
-- **Falsk Live gir alltid samme sporobjekt**, så testene kunne ikke fange `is`-feilen. Vurder å la den gi nye
-  objekter per oppslag.
-- Flytte scriptet ut av Live-appen og de andre punktene i `Endringsønsker.md`.
+## Ikke bekreftet i Live
+
+- Stop + pad 16 (loopstart) fra stillstand. Bruker samme metode som scrubbing, som er bekreftet.
+- Shift + transpose-hjulet nullstiller volumet på valgt spor.
+- Volum- og Sends-modus er lite prøvd (nullstilling og følsomhet der er bare testet i pytest).
+- Sidevelgeren og sequencer-varselet er ikke prøvd på Macen.
+
+## Uforklart
+
+- Etter scrubbing med `jump_by()` startet `start_playing()` tre ganger fra den grønne startmarkøren i vanlig bruk,
+  mens samme kombinasjon traff i det automatiske forsøket. Dagens løsning bruker ikke `jump_by()` i stillstand og
+  har en sjekk som retter opp, så dette er ikke et problem nå, men årsaken er ikke funnet.
+- Nesten alle pads ble mørke da stop ble trykket. Windows-målingen sa «uendret». Scriptet maler alle pads på nytt
+  etter stop-trykket uansett.
+
+## Gjenstår (se også `Endringsønsker.md`)
+
+- **Push** (brukeren, fra egen terminal).
+- **Flytte scriptet ut av Live-appen** til `~/Music/Ableton/User Library/Remote Scripts/`. Klar til å gjøres.
+  Husk at `Innstillinger.py`, `.venv` og `logs/` følger mappa.
+- **`tools/bs.py` henger etter scriptet:** `setup` sender 140 meldinger (scriptet sender 164), `listen` kjenner
+  ikke CC 28–33 (viser «ukjent»), og porten lukkes rett etter sending, som kan miste meldinger på Mac.
+  Tilbakelesing (`readback`) og gap-testen ble gjort med engangsscript og bør inn som kommandoer i `bs.py`.
+- **Falsk Live gir alltid samme sporobjekt**, så testene kunne ikke fange `is`-feilen på valgt spor.
+- **Master-volum** har ingen kontroll. Forslag som ikke er målt: chan + transpose-hjulet.
+- Åpne ønsker: følelsen i Volum/Sends (kan nå prøves i `Innstillinger.py`), filtrere enkelthakk i motsatt retning.
+- Vise/skjule variasjonsvisningen i Live er ikke mulig: API-et har ingen egenskap for det.
+
+## Praktisk for neste økt
+
+- Live laster koden bare ved oppstart. Unntak: `Innstillinger.py` leses på nytt innen et sekund.
+- `.venv` finnes i prosjektmappa på Macen. `.venv/bin/python -m pytest tests` kjører 135 tester uten hardware.
+- `bs.py listen --log logs/x.log` kan kjøre samtidig med Live og er den raskeste måten å se hva BeatStepen sender.
+- `DEBUG_MIDI` og `DEBUG_TRANSPORT` i `BeatStep.py` er av. Slå på for å logge til Lives Log.txt
+  (innkommende MIDI, og hvor avspilling starter etter scrubbing).
+- Live-oppførsel som ikke kan testes uten Live: lag et lite automatisk forsøk som logger hva Live svarer, i stedet
+  for å gjette. Det løste transporten etter tre feilslåtte rettelser.
