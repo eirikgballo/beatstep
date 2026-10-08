@@ -74,6 +74,9 @@ PAD_MSG_IDS = [
 # Set to True to log incoming MIDI (the first 50 messages) and the outgoing queue to Live's Log.txt.
 DEBUG_MIDI = False
 
+# Set to True to log where playback starts after scrubbing while stopped, and whether it had to be corrected.
+DEBUG_TRANSPORT = False
+
 # The BeatStep loses sysex that arrives less than ~1 ms apart (measured on the Mac, see SIGNALS.md),
 # so the script waits this long between messages.
 MIDI_MESSAGE_GAP = 0.003
@@ -111,7 +114,8 @@ class BeatStep(ControlSurface):
         self._ticks = 0
         self._load_settings(announce=False)
         self._stop_used = False  # a pad or the transpose knob was used while stop was held
-        self._scrubbed_while_stopped = False
+        self._stopped_target = None  # where scrubbing has put the needle while the song is stopped
+        self._play_check = None
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
         self._pads = TrackPads(
@@ -154,8 +158,10 @@ class BeatStep(ControlSurface):
         self._ticks += 1
         if self._ticks % SETTINGS_CHECK_TICKS == 0:
             self._load_settings(announce=True)
-        if self._scrubbed_while_stopped and self.song().is_playing:
-            self._scrubbed_while_stopped = False  # playback was started from Live, the scrub is used up
+        if self._play_check is not None:
+            self._check_playback_start()
+        elif self._stopped_target is not None and self.song().is_playing:
+            self._stopped_target = None  # playback was started from Live, the scrub is used up
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
@@ -275,15 +281,20 @@ class BeatStep(ControlSurface):
                 elif not self._stop_used:
                     # Stop pressed on its own: stop, or play on from the playhead. Done on release,
                     # since on press the script can't know whether a pad or the knob will follow.
+                    before = self.song().current_song_time
                     if self.song().is_playing:
+                        action = 'stop_playing'
                         self.song().stop_playing()
-                    elif self._scrubbed_while_stopped:
-                        # continue_playing() would go back to where the song was stopped and ignore the
-                        # scrubbing (seen in Live). start_playing() plays from where the scrub left off.
-                        self.song().start_playing()
+                    elif self._stopped_target is not None:
+                        action = 'play from scrub target %.3f' % self._stopped_target
+                        self._play_from(self._stopped_target)
                     else:
+                        action = 'continue_playing'
                         self.song().continue_playing()
-                    self._scrubbed_while_stopped = False
+                    self._stopped_target = None
+                    if DEBUG_TRANSPORT:
+                        self.log_message('BeatStep: stop tap -> %s, needle %.3f -> %.3f'
+                                         % (action, before, self.song().current_song_time))
             elif cc == BTN_EXTSYNC_CC and value > 0 and self._shift_held:
                 self._toggle_main_view()
             elif cc == BTN_EXTSYNC_CC and value > 0:
@@ -360,14 +371,17 @@ class BeatStep(ControlSurface):
         self._stop_used = True
         song = self.song()
         if index == LOOP_START_PAD:
-            song.current_song_time = song.loop_start
-        else:
-            markers = sorted(song.cue_points, key=lambda cue: cue.time)[:LOOP_START_PAD]
-            if index >= len(markers):
-                self.show_message('No marker %d' % (index + 1))
-                return
-            # While the song plays, jump() follows Live's global quantization, like a click on the marker.
-            markers[index].jump()
+            if song.is_playing:
+                song.current_song_time = song.loop_start
+            else:
+                self._play_from(song.loop_start)
+            return
+        markers = sorted(song.cue_points, key=lambda cue: cue.time)[:LOOP_START_PAD]
+        if index >= len(markers):
+            self.show_message('No marker %d' % (index + 1))
+            return
+        # While the song plays, jump() follows Live's global quantization, like a click on the marker.
+        markers[index].jump()
         if not song.is_playing:
             song.continue_playing()
 
@@ -378,14 +392,44 @@ class BeatStep(ControlSurface):
         if beats is None:
             return
         song = self.song()
-        beats = max(beats, -song.current_song_time)  # not past the start of the song
         if song.is_playing:
-            song.jump_by(beats)
-        else:
-            # Not jump_by(): while stopped it moves from where playback was started, so the needle
-            # jumps back there first (seen in Live). Setting the time moves it from where it stands.
-            song.current_song_time = song.current_song_time + beats
-            self._scrubbed_while_stopped = True
+            song.jump_by(max(beats, -song.current_song_time))  # not past the start of the song
+            return
+        # Stopped: the script keeps the position itself. What Live reads back right after a move is the old
+        # value (the move is carried out after the script returns), so counting from it loses detents.
+        if self._stopped_target is None:
+            self._stopped_target = song.current_song_time
+        self._stopped_target = max(0.0, self._stopped_target + beats)
+        song.current_song_time = self._stopped_target  # shows the needle there
+
+    def _play_from(self, target):
+        """Start playback at `target` from a stopped song.
+
+        Measured in Live (see SIGNALS.md): setting the time and then start_playing() plays from there, while
+        continue_playing() goes back to where the song was stopped. In real use playback has still started
+        from somewhere else, so update_display checks where it landed and moves it if needed."""
+        song = self.song()
+        song.current_song_time = target
+        song.start_playing()
+        self._stopped_target = None
+        self._play_check = [target, time.monotonic(), 3]  # where, when, checks left
+
+    def _check_playback_start(self):
+        """Called on every tick after _play_from: is the song playing where it should?"""
+        target, started, checks = self._play_check
+        song = self.song()
+        if not song.is_playing:
+            self._play_check = None
+            return
+        expected = target + (time.monotonic() - started) * song.tempo / 60.0
+        position = song.current_song_time
+        if abs(position - expected) > 1.0:
+            # Moving the playhead while the song plays is the one thing that has worked every time.
+            song.current_song_time = expected
+        if DEBUG_TRANSPORT:
+            self.log_message('BeatStep: play from %.3f, expected %.3f, was at %.3f%s'
+                             % (target, expected, position, ' (corrected)' if abs(position - expected) > 1.0 else ''))
+        self._play_check = [target, started, checks - 1] if checks > 1 else None
 
     def _on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track in every mode. With shift held it resets the

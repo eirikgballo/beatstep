@@ -113,6 +113,30 @@ def test_stop_pad_16_plays_from_loop_start(marker_rig):
     assert marker_rig.song.is_playing
 
 
+def test_stop_pad_16_plays_from_loop_start_after_a_stop_elsewhere(marker_rig):
+    song = marker_rig.song
+    song.loop_start = 24.0
+    song.click_in_arrangement(8.0)
+    song.start_playing()
+    song.current_song_time = 40.0                              # played on to 40
+    marker_rig.press('stop')
+    _stop_tap(marker_rig, 16)
+    assert song.is_playing and song.current_song_time == 24.0
+
+
+def test_scrubbing_backwards_right_after_stop_near_the_song_start(marker_rig):
+    song = marker_rig.song
+    song.start_playing()                                       # started at 0
+    song.current_song_time = 6.0
+    marker_rig.press('stop')
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose', value=127, ticks=2)
+    marker_rig.button_up('stop')
+    assert song.current_song_time == 5.5
+    marker_rig.press('stop')
+    assert song.is_playing and song.current_song_time == 5.5
+
+
 def test_stop_alone_stops_playback_on_release(marker_rig):
     marker_rig.song.is_playing = True
     marker_rig.button_down('stop')
@@ -144,7 +168,7 @@ def test_play_after_scrubbing_while_stopped_starts_from_the_new_position(marker_
 def test_scrubbing_after_stop_starts_from_where_it_stopped(marker_rig):
     # Seen in Live: play from A, scrub to B while playing, stop. Scrubbing then jumped back to A first.
     song = marker_rig.song
-    song.current_song_time = 8.0                               # A
+    song.click_in_arrangement(8.0)                             # A
     song.start_playing()
     marker_rig.button_down('stop')
     marker_rig.turn('transpose', value=1, ticks=4)             # to B = 9 while playing
@@ -177,7 +201,37 @@ def test_scrub_is_forgotten_when_playback_was_started_from_live(marker_rig):
     marker_rig.button_up('stop')
     song.start_playing()                                       # space bar in Live
     marker_rig.advance(0.2)
-    assert not marker_rig.h.script._scrubbed_while_stopped
+    assert marker_rig.h.script._stopped_target is None
+
+
+def test_several_scrub_detents_before_live_catches_up_all_count(marker_rig, monkeypatch):
+    # Live carries out a move after the script returns, so the time read back in between is the old one.
+    song = marker_rig.song
+    song.current_song_time = 16.0
+    setter = type(song).current_song_time.fset
+    moves = []
+    monkeypatch.setattr(type(song), 'current_song_time',
+                        property(lambda self: 16.0, lambda self, time: moves.append(time)))
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose', value=1, ticks=4)
+    marker_rig.button_up('stop')
+    assert moves == [16.25, 16.5, 16.75, 17.0]
+
+
+def test_playback_that_starts_in_the_wrong_place_is_moved(marker_rig):
+    # Seen in Live: after scrubbing, playback started at the green start marker instead.
+    song = marker_rig.song
+    song.current_song_time = 16.0
+    song.is_playing = True
+    marker_rig.press('stop')
+    marker_rig.button_down('stop')
+    marker_rig.turn('transpose', value=1, ticks=4)             # to 17
+    marker_rig.button_up('stop')
+    song.start_playing = lambda: (setattr(song, '_time', 3.0), setattr(song, 'is_playing', True))
+    marker_rig.press('stop')
+    assert song.current_song_time == 3.0                       # Live went somewhere else
+    marker_rig.advance(0.1)
+    assert song.current_song_time == pytest.approx(17.0 + 0.1 * 120 / 60)
 
 
 def test_scrubbing_while_stopped_does_not_start_playback(marker_rig):

@@ -162,13 +162,15 @@ class Song(_Listenable):
         self._tracks = list(tracks)
         self.cue_points = ()
         self.is_playing = False
-        # Transporten slik brukeren har sett den oppføre seg i Live (se SIGNALS.md):
+        # Transporten slik den er målt i Live (se SIGNALS.md):
         #   _time           nåla, det current_song_time viser
-        #   _insert         der start_playing() spiller fra. jump_by() i stillstand regner herfra.
+        #   start_time      der start_playing() spiller fra. Å sette tiden i stillstand flytter den også,
+        #                   og jump_by() i stillstand regner fra den.
         #   _continue_from  der continue_playing() tar opp igjen: stedet låta ble stoppet
         self._time = 0.0
-        self._insert = 0.0
+        self.start_time = 0.0
         self._continue_from = None
+        self.tempo = 120.0
         self.loop_start = 0.0
         self.master_track = MasterTrack()
         self.view = _SongView(self._tracks[0] if self._tracks else self.master_track)
@@ -193,7 +195,7 @@ class Song(_Listenable):
             raise RuntimeError('Invalid song time %r' % time)
         self._time = time
         if not self.is_playing:
-            self._insert = time      # i stillstand flytter dette også startpunktet
+            self.start_time = time
 
     def continue_playing(self):
         if self._continue_from is not None:
@@ -201,7 +203,7 @@ class Song(_Listenable):
         self.is_playing = True
 
     def start_playing(self):
-        self._time = self._insert
+        self._time = self.start_time
         self.is_playing = True
 
     def stop_playing(self):
@@ -212,9 +214,13 @@ class Song(_Listenable):
         if self.is_playing:
             self.current_song_time = self._time + beats
         else:
-            self.current_song_time = self._insert + beats
+            self.current_song_time = self.start_time + beats
 
     # Hjelpere for å simulere endringer gjort i Live-UI-et.
+
+    def click_in_arrangement(self, time):
+        """Et museklikk i arrangementet flytter både nåla og startpunktet."""
+        self._time = self.start_time = time
 
     def add_marker(self, name, time):
         # Live holder ikke lista sortert på tid, så nye markører legges bare bakerst.

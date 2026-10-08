@@ -70,17 +70,38 @@ på nytt når store, recall, chan, shift eller cntrl/seq slippes.
 - Etter chan + pad 3 sender pads og encodere fortsatt på CH10 (pad 5 og encoder 2 målt), siden scriptet setter
   kanalen fast på hver kontroll.
 
-## Live: transport fra scriptet (observert av brukeren 2026-10-08)
+## Live: transport fra scriptet (målt 2026-10-08 med et automatisk forsøk i Live 11.3.43)
 
-Live holder tre posisjoner fra hverandre når låta står stille:
+Forsøket plasserte nåla i stillstand på et eget mål per variant, startet avspilling, og leste posisjonen 0,5 s
+senere (tempo 79,7, altså ca. 0,8 slag senere). «Stoppunkt» er der låta sist ble stoppet.
 
-- Låta stoppes, `song.jump_by()` flytter posisjonen, så `song.continue_playing()`:
-  Live spiller fra der låta ble stoppet, ikke fra den nye posisjonen.
-- Samme, men med `song.start_playing()` i stedet: Live spiller fra den nye posisjonen (bekreftet).
-- Spill fra A, scrub til B mens låta spiller, stopp. `song.jump_by()` i stillstand flytter da nåla tilbake til A
-  og regner derfra. `jump_by()` i stillstand går altså ut fra der avspillingen ble startet, ikke der nåla står.
-- Scriptet setter derfor `song.current_song_time` direkte når det scrubbes i stillstand. Da regnes det fra der
-  nåla står (B), og `start_playing()` spiller fra den nye posisjonen (bekreftet av brukeren).
+| Plassering i stillstand | Start | Spilte fra |
+|---|---|---|
+| `current_song_time = mål` | `continue_playing()` | stoppunktet (feil) |
+| `current_song_time = mål` | `start_playing()` | målet |
+| `current_song_time = mål` | `is_playing = True` | målet |
+| `jump_by(mål − lest posisjon)` | `continue_playing()` | stoppunktet (feil) |
+| `jump_by(...)` | `start_playing()` | der hoppet landet, som ikke var målet |
+| `scrub_by(...)` | `continue_playing()` | stoppunktet (feil) |
+| `start_time = mål` | `start_playing()` | målet (nåla flyttes ikke før start) |
+| ingen | `continue_playing()`, så `current_song_time = mål` ett tick senere | målet |
+
+- `continue_playing()` går alltid tilbake til stoppunktet, uansett hvor nåla er flyttet.
+- `start_playing()` spiller fra `song.start_time`. Å sette `current_song_time` i stillstand flytter den også.
+- `jump_by()` i stillstand regner fra `start_time`, ikke fra nåla: fra 40,808 med +7,192 landet den på 47,192
+  (forrige `start_time` var 40,000).
+- Live utfører flyttingen etter at scriptet har returnert. Leses `current_song_time` rett etter et hopp i samme
+  kall, får scriptet den gamle verdien (tre hopp på rad leste samme tall).
+- `song` har også `start_time`, `play_selection`, `jump_to_next_cue`, `jump_to_prev_cue` og `scrub_by`.
+
+**Ikke forklart:** i vanlig bruk (scrub med `jump_by`, så stop-trykk og `start_playing()`) startet avspillingen
+tre ganger fra ca. slag 12,2, der den grønne startmarkøren sto, selv om nåla sto på 49–62. I forsøket spilte samme
+kombinasjon fra der nåla sto. Forskjellen er ikke funnet. Scriptet sjekker derfor hvor avspillingen havnet og
+flytter den hvis den er mer enn ett slag unna (å sette posisjonen mens låta spiller har virket hver gang).
+
+**Løsningen i bruk:** scriptet holder selv rede på posisjonen under scrubbing i stillstand, setter
+`current_song_time` og starter med `start_playing()`. Fem avspillinger etter scrubbing, fram og tilbake i låta:
+alle startet på målet (0,00–0,07 slag unna ved første sjekk), og korrigeringen slo aldri inn. Bekreftet av brukeren.
 
 ## Burst og timing
 

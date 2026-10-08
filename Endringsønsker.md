@@ -46,8 +46,8 @@ Mal:
   - Bekreftet i Live 2026-10-08: stop alene stopper, scrub virker både med og uten avspilling.
   - Justert etter prøve: stop alene starter avspilling når låta står stille, og scrub er finere
     (1/4 slag per hakk sakte, opptil 4 slag fort, mot 1–8 før).
-  - Rettet og bekreftet i Live: avspilling etter scrubbing i stillstand starter fra den nye posisjonen,
-    og scrubbing etter stopp regner fra der nåla står (se `SIGNALS.md`).
+  - Avspilling etter scrubbing i stillstand trengte flere runder. Løst etter et automatisk forsøk i Live som
+    viste hvilke kall som virker (se `SIGNALS.md`). Bekreftet i Live.
   - Ikke bekreftet: stop + pad 16 (loopstart) mens låta står stille.
 
 ### Følelsen i Volum- og Sends-modus
