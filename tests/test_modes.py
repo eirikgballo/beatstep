@@ -121,6 +121,57 @@ def test_sends_have_own_8_track_paging(rig):
     assert rig.track(9).mixer_device.sends[0].value > 0
 
 
+# --- nullstilling med shift + encoder ----------------------------------------
+
+def _shift_turn(rig, encoder, **kwargs):
+    rig.button_down('shift')
+    rig.turn(encoder, **kwargs)
+    rig.button_up('shift')
+
+
+def test_shift_encoder_resets_macro_to_default(rig):
+    rig.turn(3, ticks=20, interval=0.02)
+    assert _macro(rig.track(1), 3).value > 0
+    _shift_turn(rig, 3)
+    assert _macro(rig.track(1), 3).value == 0
+
+
+def test_shift_encoder_resets_in_either_direction_and_stays_there(rig):
+    rig.turn(3, ticks=20, interval=0.02)
+    _shift_turn(rig, 3, value=127, ticks=5, interval=0.02)
+    assert _macro(rig.track(1), 3).value == 0
+    _shift_turn(rig, 3, value=1, ticks=5, interval=0.02)
+    assert _macro(rig.track(1), 3).value == 0
+
+
+def test_shift_encoder_leaves_other_macros_alone(rig):
+    rig.turn(3, ticks=5)
+    rig.turn(4, ticks=5)
+    _shift_turn(rig, 3)
+    assert _macro(rig.track(1), 4).value > 0
+
+
+def test_shift_encoder_resets_volume_to_default_not_zero(rig):
+    rig.press('recall')
+    rig.turn(3, value=127, ticks=20, interval=0.02)
+    assert rig.track(3).mixer_device.volume.value < 0.85
+    _shift_turn(rig, 3)
+    assert rig.track(3).mixer_device.volume.value == 0.85
+
+
+def test_shift_encoder_resets_send(rig):
+    rig.press('store')
+    rig.turn(11, ticks=5)
+    _shift_turn(rig, 11)
+    assert rig.track(3).mixer_device.sends[1].value == 0
+
+
+def test_shift_encoder_without_rack_still_shows_message(rig):
+    rig.track(1).devices[:] = []
+    _shift_turn(rig, 3)
+    assert 'No Audio Effect Rack on selected track' in rig.h.messages
+
+
 # --- transpose ---------------------------------------------------------------
 
 def test_transpose_controls_selected_track_volume(rig):

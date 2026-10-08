@@ -66,3 +66,12 @@ def nudge(param, fraction):
     """Move a Live parameter by a fraction of its range, clamped to [min, max]."""
     span = param.max - param.min
     param.value = max(param.min, min(param.max, param.value + fraction * span))
+
+
+def turn(param, fraction, reset):
+    """One encoder detent: nudge the parameter, or with `reset` (shift held) put it back to its default
+    value, like a double-click in Live."""
+    if reset:
+        param.value = param.default_value
+    else:
+        nudge(param, fraction)

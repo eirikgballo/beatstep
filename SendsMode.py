@@ -5,7 +5,7 @@ Sends has its own 8-track paging: pad page P covers tracks 8·(P−1)+1 … 8·P
 while the pads show 16 tracks per page. See DESIGN.md.
 """
 
-from .Encoders import KNOB_FEEL, nudge
+from .Encoders import KNOB_FEEL, turn
 
 TRACKS_PER_PAGE = 8
 
@@ -19,7 +19,7 @@ class SendsMode:
         self._pads          = pads
         self._accelerator   = accelerator
 
-    def on_encoder(self, encoder_index, value):
+    def on_encoder(self, encoder_index, value, reset=False):
         delta = self._accelerator.delta(encoder_index, value, KNOB_FEEL)
         if delta is None:
             return
@@ -30,4 +30,4 @@ class SendsMode:
             return
         sends = tracks[track_index].mixer_device.sends
         if send_index < len(sends):
-            nudge(sends[send_index], delta)
+            turn(sends[send_index], delta, reset)

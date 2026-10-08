@@ -2,7 +2,7 @@
 RackMode — encoders 1–16 control macros 1–16 of the first Audio Effect Rack on the selected track.
 """
 
-from .Encoders import KNOB_FEEL, nudge
+from .Encoders import KNOB_FEEL, turn
 
 
 class RackMode:
@@ -24,7 +24,7 @@ class RackMode:
                     return device
         return None
 
-    def on_encoder(self, encoder_index, value):
+    def on_encoder(self, encoder_index, value, reset=False):
         delta = self._accelerator.delta(encoder_index, value, KNOB_FEEL)
         if delta is None:
             return
@@ -37,4 +37,4 @@ class RackMode:
         if macro_index >= len(params):
             self._show_message('Macro %d not available' % (encoder_index + 1))
             return
-        nudge(params[macro_index], delta)
+        turn(params[macro_index], delta, reset)

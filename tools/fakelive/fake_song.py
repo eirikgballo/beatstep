@@ -30,6 +30,7 @@ class Parameter:
         self.min = min
         self.max = max
         self._value = value
+        self.default_value = value  # det dobbeltklikk i Live setter parameteren til
 
     @property
     def value(self):

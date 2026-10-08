@@ -62,6 +62,9 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 - Exactly one mode button LED is lit at any time. The other two are off.
 - The transpose encoder controls the **volume of the selected track** in every mode.
   With `shift` held it controls the **master volume**.
+- `shift` + encoder 1–16 **resets** the parameter the encoder controls to its default value
+  (`parameter.default_value`), like a double-click in Live: macro to its default, volume to 0 dB, send to −∞.
+  One detent in either direction is enough, and further turning with `shift` held changes nothing.
 - The script always boots in Rack mode. The mode is not remembered between sessions.
 
 ---
@@ -116,7 +119,7 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 | `chan` | Rack mode |
 | `recall` | Volume mode |
 | `store` | Sends mode |
-| `shift` | Modifier for `shift` + pad (solo) and `shift` + transpose (master volume) |
+| `shift` | Modifier for `shift` + pad (solo), `shift` + encoder (reset to default) and `shift` + transpose (master volume) |
 | `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
 | `play`, `stop` | Firmware starts/stops its sequencer. Script only repaints on release |
 | `ext sync` | Opens the page picker, or closes it without changing page |

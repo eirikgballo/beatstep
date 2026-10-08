@@ -209,7 +209,7 @@ class BeatStep(ControlSurface):
     def _handle_cc(self, cc, value):
         """Encoders and function buttons."""
         if ENCODER_CC_BASE <= cc < ENCODER_CC_BASE + 16:
-            self._mode.on_encoder(cc - ENCODER_CC_BASE, value)
+            self._mode.on_encoder(cc - ENCODER_CC_BASE, value, reset=self._shift_held)
         elif cc == TRANSPOSE_CC:
             self._on_transpose_encoder(value)
         elif cc in _BUTTON_CCS:
