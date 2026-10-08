@@ -16,31 +16,6 @@ Mal:
 
 ## Åpne
 
-### Velge makro-variasjoner (snapshots) i Rack-modus
-- **Dato:** 2026-10-08
-- **Ønske:** velge mellom rack-ets makro-variasjoner fra BeatStepen, og gjerne en knapp som viser/skjuler
-  variasjonsvisningen i Live.
-- **Hvorfor:** bytte mellom lagrede makro-oppsett uten musa.
-- **Status:** i arbeid (kode og tester ferdige 2026-10-08, må prøves i Live)
-- **Notater:**
-  - Løsning: trykk chan en gang til i Rack-modus, så viser padene variasjonene (rød = valgt, magenta = finnes).
-    Pad N henter fram variasjon N. Velgeren blir stående åpen til chan trykkes igjen (avklart med brukeren).
-  - Lagring gjøres i Live, siden variasjonen skal ha navn (avklart med brukeren).
-  - Live 11: `variation_count`, `selected_variation_index`, `recall_selected_variation()` på rack-et
-    (funnet i Lives egne scripts, `_MxDCore/LomTypes.pyc`).
-  - Vise/skjule variasjonsvisningen i Live: fant ingen egenskap for det i Lives API. Ikke laget.
-  - Chan + pad kan ikke brukes, firmwaren sluker pad-trykket mens chan holdes (se `SIGNALS.md`).
-
-### Bytte mellom Session og Arrangement (som Tab)
-- **Dato:** 2026-10-08
-- **Ønske:** en knapp som bytter mellom Session View og Arrangement View, slik Tab gjør i Live.
-- **Hvorfor:** slippe å gå til tastaturet for å bytte visning.
-- **Status:** bekreftet i Live 2026-10-08, ikke committet
-- **Notater:**
-  - Valgt av brukeren: shift + ext sync. Ext sync alene er fortsatt sidevelgeren.
-  - Live: `application().view.is_view_visible('Session')` og `show_view('Session')` / `show_view('Arranger')`.
-  - Knapper sender CC mens shift holdes (shift + recall målt, se `SIGNALS.md`).
-
 ### Enkel justering av encoder-følsomhet
 - **Dato:** 2026-10-08
 - **Ønske:** justere følsomheten for encoderne selv, enkelt, uten å lete i koden. For eksempel et tall fra 1 til 10
@@ -91,6 +66,18 @@ Mal:
 - **Status:** klar (etter at Mac-feilen i `handoff/HANDOFF.md` er løst)
 
 ## Gjennomført
+
+### Velge makro-variasjoner (snapshots) i Rack-modus
+- **Dato:** 2026-10-08, commit 4e212c1
+- **Ønske:** velge mellom rack-ets makro-variasjoner fra BeatStepen.
+- **Løsning:** trykk chan en gang til i Rack-modus, så viser padene variasjonene (rød = valgt, magenta = finnes).
+  Pad N henter fram variasjon N, og velgeren blir stående åpen til chan trykkes igjen. Bekreftet i Live.
+  Lagring gjøres i Live. Vise/skjule variasjonsvisningen i Live er ikke laget: API-et har ingen egenskap for det.
+
+### Bytte mellom Session og Arrangement (som Tab)
+- **Dato:** 2026-10-08, commit 4e212c1
+- **Ønske:** en knapp som bytter mellom Session View og Arrangement View.
+- **Løsning:** shift + ext sync. Ext sync alene er fortsatt sidevelgeren. Bekreftet i Live.
 
 ### Nullstille parameter med shift + encoder
 - **Dato:** 2026-10-08, commit 9d8f3ac
