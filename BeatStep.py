@@ -8,6 +8,8 @@ See DESIGN.md for the full specification and SIGNALS.md for measured hardware be
 """
 
 from collections import OrderedDict
+import io
+import os
 import time
 
 import Live
@@ -16,7 +18,8 @@ from _Framework.ControlSurface import ControlSurface
 from _Framework import Task
 
 from . import Sysex
-from .Encoders import Accelerator, SCRUB_FEEL, TRANSPOSE_FEEL, nudge
+from . import Encoders
+from .Encoders import Accelerator, feel, turn
 from .RackMode import RackMode
 from .SendsMode import SendsMode
 from .TrackPads import LOOP_START_PAD, TrackPads
@@ -79,6 +82,11 @@ MIDI_MESSAGE_GAP = 0.003
 # update_display tick (100 ms): 16 messages is about 50 ms of waiting.
 MIDI_MESSAGES_PER_TICK = 16
 
+# The user's settings file. It is read again whenever it changes, so the feel can be tuned while Live runs.
+# The environment variable lets the tests point at their own file.
+SETTINGS_PATH = os.environ.get('BEATSTEP_Q_SETTINGS') or os.path.join(os.path.dirname(__file__), 'Innstillinger.py')
+SETTINGS_CHECK_TICKS = 10
+
 # Reverse-lookup map built once at import time for O(1) dispatch.
 _PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
 
@@ -99,6 +107,9 @@ class BeatStep(ControlSurface):
         self._midi_queue = OrderedDict()
         self._shift_held = False
         self._stop_held = False
+        self._settings_mtime = None
+        self._ticks = 0
+        self._load_settings(announce=False)
         self._stop_used = False  # a pad or the transpose knob was used while stop was held
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
@@ -115,6 +126,7 @@ class BeatStep(ControlSurface):
             BTN_STORE_CC:  SendsMode(self.song(), self._pads, self._accelerator),
         }
         self._mode = self._modes[BTN_CHAN_CC]
+        self._pads.variation_source = self._modes[BTN_CHAN_CC]
         self._schedule_hardware_setup()
         self.request_rebuild_midi_map()
 
@@ -138,6 +150,9 @@ class BeatStep(ControlSurface):
         ControlSurface.update_display(self)
         self._pads.tick()
         self._flush_midi()
+        self._ticks += 1
+        if self._ticks % SETTINGS_CHECK_TICKS == 0:
+            self._load_settings(announce=True)
 
     def build_midi_map(self, midi_map_handle):
         """Register MIDI addresses so receive_midi is called for them."""
@@ -147,6 +162,31 @@ class BeatStep(ControlSurface):
             Live.MidiMap.forward_midi_note(h, midi_map_handle, _CHANNEL, note)
         for cc in _BUTTON_CCS + [TRANSPOSE_CC] + [ENCODER_CC_BASE + i for i in range(16)]:
             Live.MidiMap.forward_midi_cc(h, midi_map_handle, _CHANNEL, cc)
+
+    # ------------------------------------------------------------------
+    # Settings
+    # ------------------------------------------------------------------
+
+    def _load_settings(self, announce):
+        """Read Innstillinger.py if it is new or has changed. Without the file the defaults apply."""
+        try:
+            mtime = os.path.getmtime(SETTINGS_PATH)
+        except OSError:
+            mtime = None
+        if mtime == self._settings_mtime:
+            return
+        self._settings_mtime = mtime
+        settings = {}
+        try:
+            if mtime is not None:
+                with io.open(SETTINGS_PATH, encoding='utf-8') as f:
+                    exec(compile(f.read(), SETTINGS_PATH, 'exec'), settings)
+            Encoders.configure(settings)
+        except Exception as error:  # a typo in the file must not take the controller down
+            self.show_message('BeatStep: error in Innstillinger.py, keeping the old values (%s)' % error)
+            return
+        if announce:
+            self.show_message('BeatStep: Innstillinger.py loaded')
 
     # ------------------------------------------------------------------
     # Hardware setup
@@ -236,11 +276,17 @@ class BeatStep(ControlSurface):
                         self.song().stop_playing()
                     else:
                         self.song().continue_playing()
+            elif cc == BTN_EXTSYNC_CC and value > 0 and self._shift_held:
+                self._toggle_main_view()
             elif cc == BTN_EXTSYNC_CC and value > 0:
                 self._pads.toggle_page_picker()
             elif cc in self._modes and value > 0 and self._modes[cc] is not self._mode:
                 self._mode = self._modes[cc]
+                self._pads.close_variation_picker()
                 self.show_message('BeatStep: %s mode' % self._mode.name)
+            elif cc == BTN_CHAN_CC and value > 0:
+                # chan pressed while already in Rack mode: open or close the variation picker.
+                self._pads.toggle_variation_picker()
             elif cc == BTN_CNTRL_CC and value > 0:
                 # The firmware toggles between control and sequencer mode. The script can't read the mode,
                 # so it counts presses and assumes control mode on start.
@@ -295,6 +341,11 @@ class BeatStep(ControlSurface):
         if DEBUG_MIDI and count and not self._midi_queue:
             self.log_message('BeatStep: MIDI queue drained')
 
+    def _toggle_main_view(self):
+        """Shift + ext sync: switch between Session and Arrangement, like Tab in Live."""
+        view = self.application().view
+        view.show_view('Arranger' if view.is_view_visible('Session') else 'Session')
+
     def _play_from_marker(self, index):
         """Jump to marker 1–15, counted from the start of the song, or to the loop start (last pad),
         and make sure the song plays."""
@@ -315,21 +366,19 @@ class BeatStep(ControlSurface):
     def _scrub(self, value):
         """Stop + transpose knob: move the playhead along the timeline."""
         self._stop_used = True
-        beats = self._accelerator.delta('scrub', value, SCRUB_FEEL)
+        beats = self._accelerator.delta('scrub', value, feel('scrub'))
         if beats is None:
             return
         song = self.song()
         song.jump_by(max(beats, -song.current_song_time))  # not past the start of the song
 
     def _on_transpose_encoder(self, value):
-        """Transpose encoder → volume of the selected track in every mode, or master with shift held."""
-        delta = self._accelerator.delta('transpose', value, TRANSPOSE_FEEL)
+        """Transpose encoder → volume of the selected track in every mode. With shift held it resets the
+        volume to its default, like shift + encoder."""
+        delta = self._accelerator.delta('transpose', value, feel('transpose'))
         if delta is None:
             return
-        if self._shift_held:
-            track = self.song().master_track
-        else:
-            track = self.song().view.selected_track
+        track = self.song().view.selected_track
         if track is None:
             return
-        nudge(track.mixer_device.volume, delta)
+        turn(track.mixer_device.volume, delta, reset=self._shift_held)

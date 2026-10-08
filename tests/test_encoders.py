@@ -18,23 +18,23 @@ def enc(clock):
 
 def test_clockwise_and_counter_clockwise(enc, clock):
     acc = enc.Accelerator()
-    assert acc.delta(0, 1, enc.KNOB_FEEL) > 0
+    assert acc.delta(0, 1, enc.feel('rack')) > 0
     clock.now += 1
-    assert acc.delta(0, 127, enc.KNOB_FEEL) < 0
+    assert acc.delta(0, 127, enc.feel('rack')) < 0
 
 
 @pytest.mark.parametrize('value', [0, 64])
 def test_neutral_values_are_ignored(enc, value):
-    assert enc.Accelerator().delta(0, value, enc.KNOB_FEEL) is None
+    assert enc.Accelerator().delta(0, value, enc.feel('rack')) is None
 
 
 def test_first_tick_counts_as_slow(enc):
-    feel = enc.KNOB_FEEL
+    feel = enc.feel('rack')
     assert enc.Accelerator().delta(0, 1, feel) == pytest.approx(feel.min_step)
 
 
 def test_fast_ticks_get_full_step(enc, clock):
-    feel = enc.KNOB_FEEL
+    feel = enc.feel('rack')
     acc = enc.Accelerator()
     acc.delta(0, 1, feel)
     clock.now += feel.fast / 2
@@ -42,7 +42,7 @@ def test_fast_ticks_get_full_step(enc, clock):
 
 
 def test_slow_ticks_get_minimum_step(enc, clock):
-    feel = enc.KNOB_FEEL
+    feel = enc.feel('rack')
     acc = enc.Accelerator()
     acc.delta(0, 1, feel)
     clock.now += feel.slow * 2
@@ -51,7 +51,7 @@ def test_slow_ticks_get_minimum_step(enc, clock):
 
 def test_hardware_acceleration_counts_as_full_speed(enc, clock):
     # Very fast spins make the BeatStep send larger values (measured 12).
-    feel = enc.KNOB_FEEL
+    feel = enc.feel('rack')
     acc = enc.Accelerator()
     acc.delta(0, 1, feel)
     clock.now += 5
@@ -59,7 +59,7 @@ def test_hardware_acceleration_counts_as_full_speed(enc, clock):
 
 
 def test_encoders_are_timed_independently(enc, clock):
-    feel = enc.KNOB_FEEL
+    feel = enc.feel('rack')
     acc = enc.Accelerator()
     acc.delta(0, 1, feel)
     clock.now += 0.01

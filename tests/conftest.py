@@ -132,7 +132,9 @@ class Rig:
 
 
 @pytest.fixture
-def clock(monkeypatch):
+def clock(monkeypatch, tmp_path):
+    # Brukerens Innstillinger.py skal ikke påvirke testene: uten fil gjelder standardverdiene.
+    monkeypatch.setenv('BEATSTEP_Q_SETTINGS', str(tmp_path / 'Innstillinger.py'))
     c = Clock()
     monkeypatch.setattr(time, 'monotonic', c)
     monkeypatch.setattr(time, 'sleep', lambda seconds: None)  # pausen mellom sysex skal ikke bremse testene

@@ -4,6 +4,7 @@ TrackPads — the pads in every mode.
   - Pad 0-15: select tracks on the current page (shift + pad toggles solo, see BeatStep)
   - Track paging, 16 tracks per page
   - Pad LEDs, including the red/magenta blink for a selected + soloed track
+  - The variation picker: the pads recall the macro variations of the rack on the selected track
 """
 
 import time
@@ -29,6 +30,10 @@ class TrackPads:
 
         # True while the pads show the page picker instead of tracks.
         self.picking_page = False
+
+        # True while the pads show the variation picker. `variation_source` is the RackMode, set by BeatStep.
+        self.picking_variation = False
+        self.variation_source = None
 
         # True while the BeatStep is in sequencer mode: the pads don't send notes, so instead of
         # track colors all pads blink red as a warning.
@@ -103,6 +108,12 @@ class TrackPads:
             if pad_index == LOOP_START_PAD:
                 return Sysex.COLOR_MAGENTA
             return Sysex.COLOR_BLUE if pad_index < len(self._song.cue_points) else Sysex.COLOR_OFF
+        if self.picking_variation:
+            # Magenta and not blue, so the picker can't be mistaken for the tracks.
+            count, selected = self.variation_source.variations()
+            if pad_index == selected:
+                return Sysex.COLOR_RED
+            return Sysex.COLOR_MAGENTA if pad_index < count else Sysex.COLOR_OFF
         if self.picking_page:
             if pad_index == self._page:
                 return Sysex.COLOR_RED
@@ -136,6 +147,10 @@ class TrackPads:
         if self.suspended:
             self.update_leds()
             return
+        if self.picking_variation:
+            # No listeners on the variations: follow what is stored, deleted or chosen in Live from here.
+            self.update_leds()
+            return
         if self.picking_page:
             return
         for pad_index in range(PADS_PER_PAGE):
@@ -159,6 +174,10 @@ class TrackPads:
     # ------------------------------------------------------------------
 
     def on_pad_press(self, pad_index):
+        if self.picking_variation:
+            self.variation_source.recall_variation(pad_index)
+            self.update_leds()
+            return
         if self.picking_page:
             self._go_to_page(pad_index)
             return
@@ -172,7 +191,7 @@ class TrackPads:
     def toggle_solo(self, pad_index):
         """Toggle solo on the pad's track without selecting it (shift + pad). Ignored in the page picker."""
         track = self._track_for_pad(pad_index)
-        if self.picking_page or track is None:
+        if self.picking_page or self.picking_variation or track is None:
             return
         track.solo = not track.solo
 
@@ -196,7 +215,20 @@ class TrackPads:
     def toggle_page_picker(self):
         """Enter or leave the page picker, where pad N chooses page N."""
         self.picking_page = not self.picking_page
+        self.picking_variation = False
         self.update_leds()
+
+    def toggle_variation_picker(self):
+        """Enter or leave the variation picker, where pad N recalls macro variation N. It stays open
+        after a choice, so variations can be compared."""
+        self.picking_variation = not self.picking_variation
+        self.picking_page = False
+        self.update_leds()
+
+    def close_variation_picker(self):
+        if self.picking_variation:
+            self.picking_variation = False
+            self.update_leds()
 
     def _go_to_page(self, page):
         """Show page `page` (0-indexed) and leave the picker. Empty pages are refused and the picker stays open."""

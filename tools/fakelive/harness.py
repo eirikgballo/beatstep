@@ -42,10 +42,32 @@ class MidiMapRecord:
         self.ccs = set()
 
 
+class FakeApplicationView:
+    """Hovedvinduet i Live: enten Session eller Arrangement ('Arranger') er framme."""
+
+    def __init__(self):
+        self.visible = 'Arranger'
+
+    def is_view_visible(self, name):
+        return name == self.visible
+
+    def show_view(self, name):
+        if name not in ('Session', 'Arranger'):
+            raise RuntimeError('Unknown view %r' % name)
+        self.visible = name
+
+
+class FakeApplication:
+
+    def __init__(self):
+        self.view = FakeApplicationView()
+
+
 class FakeCInstance:
 
     def __init__(self, song, send_midi, show_message, log_message):
         self._song = song
+        self.application = FakeApplication()
         self.send_midi = send_midi
         self.show_message = show_message
         self.log_message = log_message

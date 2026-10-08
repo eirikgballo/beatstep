@@ -16,15 +16,42 @@ Mal:
 
 ## Åpne
 
+### Velge makro-variasjoner (snapshots) i Rack-modus
+- **Dato:** 2026-10-08
+- **Ønske:** velge mellom rack-ets makro-variasjoner fra BeatStepen, og gjerne en knapp som viser/skjuler
+  variasjonsvisningen i Live.
+- **Hvorfor:** bytte mellom lagrede makro-oppsett uten musa.
+- **Status:** i arbeid (kode og tester ferdige 2026-10-08, må prøves i Live)
+- **Notater:**
+  - Løsning: trykk chan en gang til i Rack-modus, så viser padene variasjonene (rød = valgt, magenta = finnes).
+    Pad N henter fram variasjon N. Velgeren blir stående åpen til chan trykkes igjen (avklart med brukeren).
+  - Lagring gjøres i Live, siden variasjonen skal ha navn (avklart med brukeren).
+  - Live 11: `variation_count`, `selected_variation_index`, `recall_selected_variation()` på rack-et
+    (funnet i Lives egne scripts, `_MxDCore/LomTypes.pyc`).
+  - Vise/skjule variasjonsvisningen i Live: fant ingen egenskap for det i Lives API. Ikke laget.
+  - Chan + pad kan ikke brukes, firmwaren sluker pad-trykket mens chan holdes (se `SIGNALS.md`).
+
+### Bytte mellom Session og Arrangement (som Tab)
+- **Dato:** 2026-10-08
+- **Ønske:** en knapp som bytter mellom Session View og Arrangement View, slik Tab gjør i Live.
+- **Hvorfor:** slippe å gå til tastaturet for å bytte visning.
+- **Status:** bekreftet i Live 2026-10-08, ikke committet
+- **Notater:**
+  - Valgt av brukeren: shift + ext sync. Ext sync alene er fortsatt sidevelgeren.
+  - Live: `application().view.is_view_visible('Session')` og `show_view('Session')` / `show_view('Arranger')`.
+  - Knapper sender CC mens shift holdes (shift + recall målt, se `SIGNALS.md`).
+
 ### Enkel justering av encoder-følsomhet
 - **Dato:** 2026-10-08
 - **Ønske:** justere følsomheten for encoderne selv, enkelt, uten å lete i koden. For eksempel et tall fra 1 til 10
   for rolig vridning og ett for rask vridning (akselerasjon), samlet øverst i en fil eller i en egen fil.
 - **Hvorfor:** følelsen må prøves fram i bruk, og i dag ligger den som fem tall per knappetype i `Encoders.py`.
-- **Status:** avklares (drøftes med brukeren)
+- **Status:** i arbeid (kode og tester ferdige 2026-10-08, må prøves i Live)
 - **Notater:**
-  - I dag: `KNOB_FEEL` (alle 16 encodere i alle moduser), `TRANSPOSE_FEEL`, `SCRUB_FEEL`.
-  - Spørsmål: per modus eller per encoder? Skala 1–10 eller ekte enheter? Kan fila leses på nytt uten å restarte Live?
+  - Avklart med brukeren: per modus, skala 1–10.
+  - Løsning: `Innstillinger.py` med to tall (rolig, rask) for RACK, VOLUM, SENDS, TRANSPOSE og SCRUB, og
+    akselerasjonskurven (ROLIG_TID, RASK_TID, KURVE). Fila leses på nytt mens Live kjører.
+  - Brukeren vil også se på jevnere akselerasjon. Start med KURVE og ROLIG_TID i fila.
 
 ### Spille fra markører (locators) med pads
 - **Dato:** 2026-10-08
@@ -49,7 +76,7 @@ Mal:
 - **Ønske:** egen encoder-følelse for Volum og Sends, f.eks. minste steg 0,5 % som transpose-knappen.
 - **Hvorfor:** et sakte hakk flytter bare 0,2 % av området, så det tar lang tid å flytte volum og sends.
 - **Status:** avklares (må kjennes på i Live)
-- **Notater:** innstillingene ligger i `Encoders.py` (`KNOB_FEEL`, `TRANSPOSE_FEEL`).
+- **Notater:** kan nå prøves direkte i `Innstillinger.py`: `VOLUM = (5, 5)` gir 0,5 % per hakk som transpose-hjulet.
 
 ### Filtrere enkelthakk i motsatt retning
 - **Dato:** 2026-10-07

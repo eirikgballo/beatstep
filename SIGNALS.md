@@ -61,6 +61,15 @@ på nytt når store, recall, chan, shift eller cntrl/seq slippes.
   Det strider mot tabellen over, som sier «Uendret» for stop fra Windows-målingen. Ikke avklart hvorfor.
   Scriptet maler derfor alle pads på nytt rett etter stop-trykket, ikke bare etter slipp.
 
+## Chan holdt inne (målt 2026-10-08 på Mac, med scriptet i Live)
+
+- Trykk: CC 33 = 127 på CH10. Slipp: CC 33 = 0.
+- **Pad trykket mens chan holdes sender ingenting** (pad 3 trykket, ingen note). Firmwaren bruker trykket til å
+  bytte global MIDI-kanal. Chan + pad kan derfor ikke brukes av scriptet.
+- Encoder vridd mens chan holdes sender vanlig CC på CH10 (encoder 1, CC 10).
+- Etter chan + pad 3 sender pads og encodere fortsatt på CH10 (pad 5 og encoder 2 målt), siden scriptet setter
+  kanalen fast på hver kontroll.
+
 ## Burst og timing
 
 - 16 LED-meldinger sendt uten pause: alle 16 tenner.

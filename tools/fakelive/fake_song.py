@@ -49,6 +49,21 @@ class Device:
         self.name = name
         self.class_name = class_name
         self.parameters = parameters
+        # Makro-variasjoner (bare rack har dem i Live): hver er en liste med makroverdier.
+        self._variations = []
+        self.selected_variation_index = -1
+
+    @property
+    def variation_count(self):
+        return len(self._variations)
+
+    def store_variation(self):
+        self._variations.append([p.value for p in self.parameters[1:]])
+        self.selected_variation_index = len(self._variations) - 1
+
+    def recall_selected_variation(self):
+        for param, value in zip(self.parameters[1:], self._variations[self.selected_variation_index]):
+            param.value = value
 
 
 def audio_effect_rack(name='Audio Effect Rack'):

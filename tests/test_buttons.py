@@ -22,6 +22,31 @@ def test_firmware_lit_buttons_are_turned_off(rig):
     assert 'stop' not in leds          # stop has no LED
 
 
+# --- bytt visning med shift + ext sync --------------------------------------
+
+def test_shift_ext_sync_toggles_between_session_and_arrangement(rig):
+    view = rig.h.c.application.view
+    rig.button_down('shift')
+    rig.press('ext sync')
+    assert view.visible == 'Session'
+    rig.press('ext sync')
+    assert view.visible == 'Arranger'
+    rig.button_up('shift')
+
+
+def test_shift_ext_sync_does_not_open_the_page_picker(rig):
+    rig.button_down('shift')
+    rig.press('ext sync')
+    rig.button_up('shift')
+    assert not rig.h.script._pads.picking_page
+    assert rig.button_leds()['ext sync'] == OFF
+
+
+def test_ext_sync_alone_does_not_change_the_view(rig):
+    rig.press('ext sync')
+    assert rig.h.c.application.view.visible == 'Arranger'
+
+
 # --- spill fra markør med stop + pad ---------------------------------------
 
 @pytest.fixture

@@ -1,8 +1,9 @@
 """
 RackMode — encoders 1–16 control macros 1–16 of the first Audio Effect Rack on the selected track.
+It also gives the pads access to the rack's macro variations (the variation picker, see TrackPads).
 """
 
-from .Encoders import KNOB_FEEL, turn
+from .Encoders import feel, turn
 
 
 class RackMode:
@@ -24,8 +25,27 @@ class RackMode:
                     return device
         return None
 
+    def variations(self):
+        """(number of macro variations, index of the selected one) for the rack on the selected track.
+        (0, -1) without a rack."""
+        rack = self._find_rack()
+        if rack is None:
+            return 0, -1
+        return rack.variation_count, rack.selected_variation_index
+
+    def recall_variation(self, index):
+        """Recall macro variation `index` (0-based), like a click on it in Live."""
+        rack = self._find_rack()
+        if rack is None:
+            self._show_message('No Audio Effect Rack on selected track')
+        elif index >= rack.variation_count:
+            self._show_message('Variation %d is empty' % (index + 1))
+        else:
+            rack.selected_variation_index = index
+            rack.recall_selected_variation()
+
     def on_encoder(self, encoder_index, value, reset=False):
-        delta = self._accelerator.delta(encoder_index, value, KNOB_FEEL)
+        delta = self._accelerator.delta(encoder_index, value, feel('rack'))
         if delta is None:
             return
         rack = self._find_rack()

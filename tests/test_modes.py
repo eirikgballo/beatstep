@@ -2,7 +2,7 @@
 
 import pytest
 
-from conftest import OFF
+from conftest import BLUE, MAGENTA, OFF, RED
 from fake_song import audio_effect_rack
 
 
@@ -70,6 +70,93 @@ def test_rack_deleted_later_is_not_used(rig):
     rig.track(1).devices.clear()
     rig.turn(1)
     assert 'No Audio Effect Rack on selected track' in rig.h.messages
+
+
+# --- variasjonsvelger (chan en gang til i Rack-modus) -----------------------
+
+@pytest.fixture
+def variation_rig(rig):
+    """Rack-et på spor 1 har tre variasjoner med makro 1 = 10, 20 og 30. Den siste er valgt."""
+    rack = rig.track(1).devices[0]
+    for value in (10, 20, 30):
+        rack.parameters[1].value = value
+        rack.store_variation()
+    return rig
+
+
+def test_chan_in_rack_mode_opens_the_variation_picker(variation_rig):
+    variation_rig.press('chan')
+    leds = variation_rig.leds()
+    assert [leds[n] for n in (1, 2, 3)] == [MAGENTA, MAGENTA, RED]      # the third is selected
+    assert all(leds[n] == OFF for n in range(4, 17))
+
+
+def test_pad_recalls_variation_and_picker_stays_open(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.tap(1)
+    assert _macro(variation_rig.track(1), 1).value == 10
+    assert variation_rig.leds()[1] == RED
+    variation_rig.tap(2)
+    assert _macro(variation_rig.track(1), 1).value == 20
+    assert variation_rig.selected is variation_rig.track(1)             # pads did not select tracks
+
+
+def test_chan_again_closes_the_picker(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.press('chan')
+    assert variation_rig.leds()[1] == RED and variation_rig.leds()[2] == BLUE    # tracks again
+    variation_rig.tap(2)
+    assert variation_rig.selected is variation_rig.track(2)
+
+
+def test_empty_variation_pad_shows_message(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.tap(5)
+    assert 'Variation 5 is empty' in variation_rig.h.messages
+
+
+def test_picker_on_track_without_rack_shows_message(variation_rig):
+    variation_rig.tap(6)
+    variation_rig.press('chan')
+    assert all(color == OFF for color in variation_rig.leds().values())
+    variation_rig.tap(1)
+    assert 'No Audio Effect Rack on selected track' in variation_rig.h.messages
+
+
+def test_changing_mode_closes_the_picker(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.press('recall')
+    assert variation_rig.mode == 'Volume'
+    assert variation_rig.leds()[2] == BLUE
+    variation_rig.press('chan')                                          # back to Rack: picker is closed
+    assert variation_rig.leds()[2] == BLUE
+
+
+def test_chan_from_another_mode_only_changes_mode(variation_rig):
+    variation_rig.press('recall')
+    variation_rig.press('chan')
+    assert variation_rig.mode == 'Rack'
+    assert not variation_rig.h.script._pads.picking_variation
+
+
+def test_shift_pad_does_not_solo_in_the_picker(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.shift_tap(2)
+    assert not variation_rig.track(2).solo
+
+
+def test_picker_follows_variations_stored_in_live(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.track(1).devices[0].store_variation()
+    variation_rig.advance(0.7)
+    assert variation_rig.leds()[4] == RED
+
+
+def test_page_picker_and_variation_picker_exclude_each_other(variation_rig):
+    variation_rig.press('chan')
+    variation_rig.press('ext sync')
+    pads = variation_rig.h.script._pads
+    assert pads.picking_page and not pads.picking_variation
 
 
 # --- Volum -----------------------------------------------------------------
@@ -180,9 +267,13 @@ def test_transpose_controls_selected_track_volume(rig):
     assert rig.track(2).mixer_device.volume.value > 0.85
 
 
-def test_shift_transpose_controls_master_volume(rig):
+def test_shift_transpose_resets_selected_track_volume(rig):
+    rig.tap(2)
+    rig.turn('transpose', value=127, ticks=10, interval=0.02)
+    assert rig.track(2).mixer_device.volume.value < 0.85
     rig.button_down('shift')
     rig.turn('transpose')
     rig.button_up('shift')
-    assert rig.song.master_track.mixer_device.volume.value > 0.85
+    assert rig.track(2).mixer_device.volume.value == 0.85
+    assert rig.song.master_track.mixer_device.volume.value == 0.85
     assert rig.track(1).mixer_device.volume.value == 0.85

@@ -12,6 +12,10 @@ class ControlSurface:
     def song(self):
         return self._c_instance.song()
 
+    def application(self):
+        # Ekte Live: Live.Application.get_application().
+        return self._c_instance.application
+
     def log_message(self, *message):
         self._c_instance.log_message(' '.join(str(m) for m in message))
 

@@ -5,7 +5,7 @@ Sends has its own 8-track paging: pad page P covers tracks 8·(P−1)+1 … 8·P
 while the pads show 16 tracks per page. See DESIGN.md.
 """
 
-from .Encoders import KNOB_FEEL, turn
+from .Encoders import feel, turn
 
 TRACKS_PER_PAGE = 8
 
@@ -20,7 +20,7 @@ class SendsMode:
         self._accelerator   = accelerator
 
     def on_encoder(self, encoder_index, value, reset=False):
-        delta = self._accelerator.delta(encoder_index, value, KNOB_FEEL)
+        delta = self._accelerator.delta(encoder_index, value, feel('sends'))
         if delta is None:
             return
         track_index = self._pads.page * TRACKS_PER_PAGE + encoder_index % TRACKS_PER_PAGE

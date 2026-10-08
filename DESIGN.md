@@ -58,10 +58,11 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 | Volume | `recall` | blue | Volume of the 16 tracks on the current page |
 | Sends | `store` | red | Encoder 1–8: send A of tracks 1–8 of the send page. Encoder 9–16: send B of the same tracks |
 
-- Pressing a mode button switches to that mode. Pressing the active mode button again does nothing (only repaints).
+- Pressing a mode button switches to that mode. Pressing `recall` or `store` again while active does nothing
+  (only repaints). Pressing `chan` again in Rack mode opens the variation picker (see below).
 - Exactly one mode button LED is lit at any time. The other two are off.
 - The transpose encoder controls the **volume of the selected track** in every mode.
-  With `shift` held it controls the **master volume**.
+  With `shift` held it **resets** that volume to its default (0 dB).
 - `shift` + encoder 1–16 **resets** the parameter the encoder controls to its default value
   (`parameter.default_value`), like a double-click in Live: macro to its default, volume to 0 dB, send to −∞.
   One detent in either direction is enough, and further turning with `shift` held changes nothing.
@@ -106,6 +107,20 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
   `"Page N is empty"` and the picker stays open.
 - Press `ext sync` again: close the picker without changing page.
 
+### Variation picker
+
+- Press `chan` while already in Rack mode: the pads show the macro variations of the first Audio Effect Rack on
+  the selected track instead of tracks. Pad N = variation N.
+  Red = selected variation, magenta = variation exists, black = empty. Magenta and not blue, so the picker
+  can't be mistaken for the tracks.
+- Press pad N: recall variation N. The picker **stays open**, so variations can be compared. An empty pad gives
+  status bar `"Variation N is empty"`, no rack gives `"No Audio Effect Rack on selected track"`.
+- Press `chan` again, or change mode: close the picker. Opening the page picker also closes it.
+- The pads don't select or solo tracks while the picker is open. The picker follows the selected track and what
+  is stored, deleted or chosen in Live (checked on the blink tick, there are no listeners).
+- Storing and naming variations is done in Live. Showing or hiding the variation view in Live is not possible:
+  the API has no property for it.
+
 ### Sequencer mode warning
 
 `cntrl/seq` switches the firmware to sequencer mode, where the pads send no notes. The script can't read
@@ -119,10 +134,10 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 
 | Button | Action |
 |--------|--------|
-| `chan` | Rack mode |
+| `chan` | Rack mode. Pressed again in Rack mode: opens or closes the variation picker |
 | `recall` | Volume mode |
 | `store` | Sends mode |
-| `shift` | Modifier for `shift` + pad (solo), `shift` + encoder (reset to default) and `shift` + transpose (master volume) |
+| `shift` | Modifier for `shift` + pad (solo), `shift` + encoder and `shift` + transpose (reset to default), and `shift` + `ext sync` (switch between Session and Arrangement, like Tab) |
 | `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
 | `stop` | Pressed on its own: stops playback in Live, or starts it from the playhead if the song is stopped (on release). Held: the pads show the markers (blue = marker exists) and the loop start (pad 16, magenta), `stop` + pad plays from there, and `stop` + transpose scrubs. Firmware also sends MIDI Stop, which Live ignores |
 | `play` | Firmware starts its sequencer. Script only repaints on release |
@@ -174,7 +189,8 @@ __init__.py    Entry point for Live (create_instance)
 BeatStep.py    ControlSurface: hardware setup, MIDI routing, mode switching, button LEDs, transpose encoder
 Sysex.py       Sysex builders, hardware addresses, colors (no state)
 TrackPads.py   Pads in every mode: selection, solo, paging, pad LEDs, blink
-Encoders.py    Relative decoding, time-based acceleration, clamped parameter writes
+Encoders.py    Relative decoding, time-based acceleration, clamped parameter writes, sensitivity from the settings
+Innstillinger.py  The user's settings: sensitivity per mode and the acceleration curve (not imported, read as text)
 RackMode.py    Encoders → macros of the first Audio Effect Rack
 VolumeMode.py  Encoders → volumes of the 16 tracks on the current page
 SendsMode.py   Encoders → send A/B of 8 tracks (own 8-track paging)
@@ -197,7 +213,7 @@ encoder input to it. Shared behaviour lives in `TrackPads` and `Encoders`, never
 | `track.mixer_device.volume` | Volume mode and transpose encoder |
 | `track.mixer_device.sends[0]`, `[1]` | Send A and B |
 
-Return tracks and the master track are not addressable from the pads. Master volume is reached with `shift` + transpose.
+Return tracks and the master track are not addressable from the pads. Master volume has no control on the BeatStep (`shift` + transpose was master volume until it became reset).
 
 ---
 
@@ -228,6 +244,14 @@ Normally ±1 per detent; very fast spins send larger values (measured 12). Any m
 **Encoder acceleration**: time-based, from the interval between ticks per encoder:
 `velocity = clamp((SLOW − dt) / (SLOW − FAST), 0, 1)`, `step = MIN + velocity^ACCEL · MAX`, as a fraction of the
 parameter range. The first tick after a pause (no previous tick) counts as slow, not fast.
+
+**Settings file**: the user tunes the feel in `Innstillinger.py`: two levels from 1 to 10 (slow, fast) for each of
+`RACK`, `VOLUM`, `SENDS`, `TRANSPOSE` and `SCRUB`, plus the shared curve (`ROLIG_TID` = SLOW, `RASK_TID` = FAST,
+`KURVE` = ACCEL). Levels are logarithmic: slow step = 0.2 % · 1.58^(level − 3), full-speed step =
+2.2 % · 1.5^(level − 5), and `MAX` is the difference. Scrub uses the same levels in beats (fraction · 125).
+`BeatStep` checks the file once a second and reads it again when it has changed, so the feel can be tuned while
+Live runs. A mistake in the file shows a status message and keeps the previous values; a missing file gives the
+defaults in `Encoders.DEFAULT_SETTINGS`, which must match the file as shipped.
 
 **Parameter writes**: always clamp to `[param.min, param.max]`. Macro range is 0–127, volume and sends 0–1.
 
