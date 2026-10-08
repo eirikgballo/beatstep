@@ -58,16 +58,62 @@ på nytt når store, recall, chan, shift eller cntrl/seq slippes.
 - 16 LED-meldinger sendt uten pause: alle 16 tenner.
 - Fullt oppsett (122 sysex, pads satt fra CC-modus til note-modus) etterfulgt av 16 LED-meldinger uten pause: alle tenner med riktig farge.
 
-Burst-grensen på cirka 4 meldinger og behovet for 1,5 s pause før LED-maling lar seg ikke gjenskape fra Windows.
-Feilen sett i Live skyldes trolig Live sin egen sysex-utsending (`_send_midi`), ikke BeatStep-firmwaren.
+Dette gjelder fra Windows, der WinMM sender én sysex om gangen med blokkerende kall. På Mac går det tapt
+meldinger når de sendes helt tett, se neste avsnitt.
 
-## Live mister utgående MIDI (målt på Mac, Live 11.3)
+## Tett sysex går tapt på Mac (målt 2026-10-08, direkte mot BeatStep med mido, uten Live imellom)
 
-- 164 oppsett-sysex + 23 LED sendt i én byge: `_send_midi` svarte `True` på alle, men bare et tilfeldig
-  utvalg kom fram (pad 1, 2, 5, 10, 11, 12, 14 lyste). Padene fikk ikke oppsettet og sendte ingenting på CH10.
-- Fra Windows direkte til USB kommer alt fram, så det er Live som dropper, ikke BeatStep-firmwaren.
-- Scriptet sender derfor via en kø, maks `MIDI_MESSAGES_PER_TICK` per `update_display` (100 ms).
-  Startverdi 4, basert på den eldste observasjonen fra Live (bare ~4 av 17 LED tente). Ikke målt eksakt ennå.
+BeatStepen svarer på lesing av én parameter: `F0 00 20 6B 7F 42 01 00 <cmd> <hw> F7` gir
+`F0 00 20 6B 7F 42 02 00 <cmd> <hw> <verdi> F7`. Slik kan hele oppsettet leses tilbake og sammenlignes.
+
+Måling: alle kanal-, behaviour- og nummer-verdier satt til en kjent feil verdi (50 ms mellom hver, kontrollert
+med tilbakelesing), så hele oppsettet (164 sysex) sendt med fast avstand, og lest tilbake.
+
+| Avstand mellom meldinger | Tapt av 164 |
+|--------------------------|-------------|
+| 0 ms | 61, 68 |
+| 0,25 ms | 71 |
+| 0,5 ms | 4, 1 |
+| 0,75 ms | 0 |
+| 1 ms | 0, 0, 1, 0 |
+| 2 ms | 0, 0 |
+| 5, 10, 20 ms | 0 |
+
+- Tapet skjer altså uten Live. Det er avstanden mellom meldingene som avgjør, ikke hvem som sender.
+  Om det er CoreMIDI/USB eller firmwaren som mister dem er ikke skilt.
+- Live kjørte under målingen og sendte solo-blink (én LED-sysex per 0,3 s). Det ene tapet ved 1 ms kan være
+  en kollisjon med den. Trygg avstand: 2 ms eller mer.
+- Enkeltmeldinger med 300 ms mellomrom slår alltid inn (7 av 7 parametre målt).
+
+**Live-scriptet med 4 meldinger per tick (commit 3fb1293):** tilbakelesing etter at køen var tømt viste 94 av 164
+riktige. Alle 41 kanal-meldinger manglet, behaviour manglet på alle encodere og knapper, nummer manglet på
+6 av 8 knapper. Scriptet sender mode, kanal, behaviour, nummer for én kontroll i samme tick, så meldinger
+midt i en tick går tapt. Padene sendte likevel på CH10 fordi kanal sto på 65 (følg global) og global kanal er 10.
+Shift og recall sendte på CH1 uten slipp-melding, encoder 1 sendte 65 i stedet for 1 (relative mode 1).
+
+**Med 3 ms pause mellom meldingene i en tick (`MIDI_MESSAGE_GAP`, `time.sleep` i `_flush_midi`):** BeatStepen
+fikk først en kjent feil grunntilstand, så ble Live startet på nytt. Tilbakelesing ga 164 av 164 riktige
+(tre lesinger, hver med 1–2 spørringer uten svar, ulike hver gang, ingen feil verdier). Live sender altså hver
+melding straks `_send_midi` kalles, og pausen i scriptet når helt fram til BeatStepen.
+
+Spørringer uten svar: når Live sender solo-blink samtidig, forsvinner av og til en spørring. Les flere ganger
+og se på verdiene, ikke på manglende svar.
+
+**Med 16 meldinger per tick og 3 ms pause:** 164 av 164 riktige etter omstart av Live (to lesinger).
+
+## Forsinkelse fra pad til script i Live (målt 2026-10-08)
+
+Samme 25 pad-trykk sett av `bs.py listen` og av scriptet (`IN`-linjer i Log.txt), sammenlignet relativt til den
+raskeste hendelsen. Live leverte hendelsene median 40 ms senere, for det meste 5–90 ms.
+5 av de første 12 trykkene etter oppstart av Live kom 280–430 ms sent (årsak ikke målt).
+Senere i rekka kom trykk etter 10–25 ms, men slipp ofte etter 70–90 ms. Mulig årsak: valg av spor la 16 LED-meldinger
+i kø, og neste tick blokkerte Lives hovedtråd i ca. 50 ms mens de ble sendt.
+
+Etter at scriptet bare sender farger som er endret (ny omstart, 25 nye trykk, samme metode):
+trykk median 8 ms (maks 19), slipp median 18 ms (maks 32). Ingen trykk over 32 ms, heller ikke rett etter oppstart.
+
+Felle på Mac: `bs.py` åpner porten, sender og lukker straks. Da kan meldinger gå tapt i lukkingen
+(5 spørringer på rad ga 0 svar). Hold porten åpen en stund etter sending når noe skal måles.
 
 ## Innkommende fra pads
 

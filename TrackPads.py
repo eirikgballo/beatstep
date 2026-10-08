@@ -11,8 +11,7 @@ import time
 from . import Sysex
 
 BLINK_INTERVAL = 0.3   # seconds per blink phase for solo pads
-# The warning blinks all 16 pads, which takes 4 ticks with the outgoing MIDI queue (see BeatStep.py),
-# so it needs a slower phase than the solo blink.
+# The warning blinks all 16 pads, so it gets a slower phase than the solo blink.
 WARNING_BLINK_INTERVAL = 0.8
 PADS_PER_PAGE = 16
 
@@ -38,6 +37,10 @@ class TrackPads:
 
         # Blink phase for a track that is both selected and soloed (red/magenta).
         self._blink_on = True
+
+        # Last color sent per pad. Unchanged pads are skipped: every message costs a few ms of waiting
+        # in Live's main thread (see BeatStep.py), which delays the handling of the next pad event.
+        self._shown = {}
 
         self._song.view.add_selected_track_listener(self._on_selected_track_changed)
         self._song.add_tracks_listener(self._on_tracks_changed)
@@ -75,30 +78,34 @@ class TrackPads:
     # LED output
     # ------------------------------------------------------------------
 
-    def update_leds(self):
+    def update_leds(self, force=False):
+        """Paint the pads. `force` also resends unchanged colors, for when the firmware has painted over them."""
         for pad_index in range(16):
-            self._send_pad_led(pad_index)
+            self._send_pad_led(pad_index, force)
 
-    def _send_pad_led(self, pad_index):
-        if self.suspended:
-            color = Sysex.COLOR_RED if self._blink_on else Sysex.COLOR_OFF
-            self._send_midi(Sysex.set_pad_color(pad_index, color))
+    def _send_pad_led(self, pad_index, force=False, urgent=False):
+        color = self._pad_color(pad_index)
+        if not force and self._shown.get(pad_index) == color:
             return
+        self._shown[pad_index] = color
+        self._send_midi(Sysex.set_pad_color(pad_index, color), urgent)
+
+    def _pad_color(self, pad_index):
+        if self.suspended:
+            return Sysex.COLOR_RED if self._blink_on else Sysex.COLOR_OFF
         if self.picking_page:
             if pad_index == self._page:
-                color = Sysex.COLOR_RED
-            elif pad_index < self._page_count():
-                color = Sysex.COLOR_BLUE
-            else:
-                color = Sysex.COLOR_OFF
-            self._send_midi(Sysex.set_pad_color(pad_index, color))
-            return
+                return Sysex.COLOR_RED
+            if pad_index < self._page_count():
+                return Sysex.COLOR_BLUE
+            return Sysex.COLOR_OFF
 
         track = self._track_for_pad(pad_index)
 
         if track is None:
             color = Sysex.COLOR_OFF
-        elif track is self._song.view.selected_track:
+        # == and not `is`: Live hands out a new Python object for the same track on every access.
+        elif track == self._song.view.selected_track:
             if getattr(track, 'solo', False) and not self._blink_on:
                 color = Sysex.COLOR_MAGENTA
             else:
@@ -107,8 +114,7 @@ class TrackPads:
             color = Sysex.COLOR_MAGENTA if self._blink_on else Sysex.COLOR_OFF
         else:
             color = Sysex.COLOR_BLUE
-
-        self._send_midi(Sysex.set_pad_color(pad_index, color))
+        return color
 
     def tick(self):
         """Called every ~100 ms from update_display. Drives the solo blink and the sequencer mode warning."""
@@ -161,8 +167,9 @@ class TrackPads:
         track.solo = not track.solo
 
     def on_pad_release(self, pad_index):
-        # The firmware turns the pad off on release, so the color must be sent again.
-        self._send_pad_led(pad_index)
+        # The firmware turns the pad off on release, so the color must be sent again, and right away:
+        # until it arrives the pad is dark.
+        self._send_pad_led(pad_index, force=True, urgent=True)
 
     # ------------------------------------------------------------------
     # Paging

@@ -1,4 +1,4 @@
-"""Utgående MIDI-kø: Live mister meldinger ved store byger, så scriptet sender maks N per tick."""
+"""Utgående MIDI-kø: BeatStepen mister sysex som kommer for tett, så scriptet sender med pause og maks N per tick."""
 
 import sys
 
@@ -59,6 +59,14 @@ def test_tap_feedback_goes_out_on_next_tick(make_rig):
     rig.clock.now += 0.1
     rig.h.tick()
     assert len(rig.h.sent) > before
+
+
+def test_released_pad_gets_its_color_without_waiting_for_a_tick(make_rig):
+    rig = make_rig()
+    rig.pad_down(3)                                 # selecting the track queues a repaint of all 16 pads
+    before = len(rig.h.sent)
+    rig.h.receive((0x89, PAD_NOTES[2], 0))
+    assert [m[8:11] for m in rig.h.sent[before:]] == [(0x10, 0x72, RED)]
 
 
 def test_disconnect_sends_everything_immediately(clock):

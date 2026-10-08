@@ -199,13 +199,15 @@ Return tracks and the master track are not addressable from the pads. Master vol
 **Target**: Ableton Live 11 (Python 3.7). Do not use syntax newer than 3.7.
 
 **Hardware setup**: Queued once, 2.1 s after connection (`port_settings_changed`), followed by a full LED paint.
-The BeatStep itself accepts any burst (measured from Windows), but Live does not, hence the outgoing queue.
 
-**Outgoing MIDI queue**: Live drops outgoing MIDI when a script sends a large burst (measured on the Mac,
-see SIGNALS.md). All sysex goes through a queue in `BeatStep`, sent at most `MIDI_MESSAGES_PER_TICK` per
-`update_display` tick. A newer value for the same LED or setting replaces the queued one. Setup takes ~5 s,
-a full repaint ~0.6 s. `disconnect` sends the whole queue at once, since Live stops ticking after it.
-Blinks that touch all 16 pads must use a phase long enough for the queue to keep up (`WARNING_BLINK_INTERVAL`).
+**Outgoing MIDI queue**: the BeatStep loses sysex that arrives less than ~1 ms apart (measured on the Mac,
+see SIGNALS.md), so the script waits `MIDI_MESSAGE_GAP` (3 ms) between messages. The wait blocks Live's main
+thread, so all sysex goes through a queue in `BeatStep`, sent at most `MIDI_MESSAGES_PER_TICK` (16) per
+`update_display` tick. A newer value for the same LED or setting replaces the queued one. Setup takes ~1 s,
+a full repaint up to ~0.2 s. The color of a released pad skips the queue and is sent at once, because the
+firmware leaves the pad dark until it arrives. Pads whose color did not change are not resent, except after
+setup, a pad release and a button release, where the firmware has painted over them. `disconnect` sends the whole queue at once, since Live stops
+ticking after it.
 
 **No re-setup on button presses**: the old re-setup on every `recall` press is removed. A preset recall from
 the firmware (`recall` + pad) is the only case that changes the hardware config; it is not handled.

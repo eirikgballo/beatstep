@@ -8,6 +8,7 @@ See DESIGN.md for the full specification and SIGNALS.md for measured hardware be
 """
 
 from collections import OrderedDict
+import time
 
 import Live
 
@@ -70,10 +71,13 @@ PAD_MSG_IDS = [
 # Temporary: log incoming MIDI and the outgoing queue to Log.txt while debugging on the Mac.
 DEBUG_MIDI = True
 
-# Live drops outgoing MIDI when a script sends too much at once (measured on the Mac: a burst of
-# ~190 sysex arrived only partly). Messages are queued and sent at most this many per update_display
-# tick (100 ms). See SIGNALS.md.
-MIDI_MESSAGES_PER_TICK = 4
+# The BeatStep loses sysex that arrives less than ~1 ms apart (measured on the Mac, see SIGNALS.md),
+# so the script waits this long between messages.
+MIDI_MESSAGE_GAP = 0.003
+
+# Waiting blocks Live's main thread, so messages are queued and sent at most this many per
+# update_display tick (100 ms): 16 messages is about 50 ms of waiting.
+MIDI_MESSAGES_PER_TICK = 16
 
 # Reverse-lookup map built once at import time for O(1) dispatch.
 _PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
@@ -89,6 +93,7 @@ class BeatStep(ControlSurface):
         ControlSurface.__init__(self, c_instance)
         self._hw_task = None
         self._debug_count = 0
+        self._last_sent = 0.0
         # Outgoing sysex, keyed by (cmd, hw index): a newer value for the same LED or setting
         # replaces the queued one, so blinking and repaints don't pile up.
         self._midi_queue = OrderedDict()
@@ -228,7 +233,8 @@ class BeatStep(ControlSurface):
                 self._update_leds()
 
     def _update_leds(self):
-        self._pads.update_leds()
+        # Called after setup and after a button release, where the firmware has put its own colors on the pads.
+        self._pads.update_leds(force=True)
         self._update_button_leds()
 
     def _update_button_leds(self):
@@ -248,15 +254,23 @@ class BeatStep(ControlSurface):
     # Outgoing MIDI queue
     # ------------------------------------------------------------------
 
-    def _queue_midi(self, msg):
+    def _queue_midi(self, msg, urgent=False):
         key = msg[8:10]  # (cmd, hw index) of a BeatStep sysex message
         self._midi_queue[key] = msg
+        if urgent:
+            # Feedback for something the user just did: skip the queue instead of waiting for a tick.
+            self._midi_queue.move_to_end(key, last=False)
+            self._flush_midi(limit=1)
 
     def _flush_midi(self, limit=MIDI_MESSAGES_PER_TICK):
         count = len(self._midi_queue) if limit is None else min(limit, len(self._midi_queue))
         for _ in range(count):
+            wait = self._last_sent + MIDI_MESSAGE_GAP - time.perf_counter()
+            if wait > 0:
+                time.sleep(wait)
             _, msg = self._midi_queue.popitem(last=False)
             self._send_midi(msg)
+            self._last_sent = time.perf_counter()
         if DEBUG_MIDI and count and not self._midi_queue:
             self.log_message('BeatStep: MIDI queue drained')
 

@@ -15,8 +15,7 @@ def test_picker_shows_pages(rig):
 
 def test_picking_a_page_shows_its_tracks(rig):
     rig.press('ext sync')
-    rig.clear()
-    rig.tap(2)
+    rig.tap(2)                                           # no clear(): pads that keep their color are not resent
     leds = rig.leds()
     assert all(leds[n] == BLUE for n in range(1, 5))     # tracks 17–20
     assert all(leds[n] == OFF for n in range(5, 17))     # tracks 21–32 don't exist

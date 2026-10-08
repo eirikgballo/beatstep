@@ -23,6 +23,21 @@ def test_selected_pad_is_red_and_previous_blue(rig):
     assert leds[1] == BLUE
 
 
+def test_selecting_a_track_only_repaints_the_pads_that_changed(rig):
+    # Every message costs a few ms in Live's main thread, so unchanged pads are left alone.
+    rig.tap(3)
+    rig.clear()
+    rig.song.view.selected_track = rig.track(5)
+    assert {n: c for n, c in rig.leds().items() if c is not None} == {3: BLUE, 5: RED}
+
+
+def test_pads_are_fully_repainted_after_a_button_release(rig):
+    # The firmware puts its own colors on the pads while a button is held.
+    rig.clear()
+    rig.press('shift')
+    assert None not in rig.leds().values()
+
+
 def test_pad_color_is_resent_on_release(rig):
     # The firmware turns the pad off on release, so the script must send the color again.
     rig.pad_down(3)

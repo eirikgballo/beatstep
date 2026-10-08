@@ -135,6 +135,7 @@ class Rig:
 def clock(monkeypatch):
     c = Clock()
     monkeypatch.setattr(time, 'monotonic', c)
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)  # pausen mellom sysex skal ikke bremse testene
     return c
 
 
