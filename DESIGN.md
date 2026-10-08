@@ -241,17 +241,20 @@ on CH1, which must never select tracks.
 **Encoder decoding**: relative mode 2. Value 1–63 = clockwise, 65–127 = counter-clockwise, 0 and 64 ignored.
 Normally ±1 per detent; very fast spins send larger values (measured 12). Any magnitude > 1 is treated as full speed.
 
-**Encoder acceleration**: time-based, from the interval between ticks per encoder:
-`velocity = clamp((SLOW − dt) / (SLOW − FAST), 0, 1)`, `step = MIN + velocity^ACCEL · MAX`, as a fraction of the
-parameter range. The first tick after a pause (no previous tick) counts as slow, not fast.
+**Encoder acceleration**: speed-based, from the number of detents per encoder in the last 0.1 s:
+`rate = detents / 0.1`, `velocity = clamp((rate − START) / (FULL − START), 0, 1)`, `step = MIN + velocity · MAX`,
+as a fraction of the parameter range. A single detent after a pause is 10 per second and counts as slow.
+The time between two single detents was used first, but it is too jittery: Live hands MIDI to the script in
+clumps, and normal turning (measured 10–40 detents/s) was treated as fast (see SIGNALS.md).
 
 **Settings file**: the user tunes the feel in `Innstillinger.py`: two levels from 1 to 10 (slow, fast) for each of
-`RACK`, `VOLUM`, `SENDS`, `TRANSPOSE` and `SCRUB`, plus the shared curve (`ROLIG_TID` = SLOW, `RASK_TID` = FAST,
-`KURVE` = ACCEL). Levels are logarithmic: slow step = 0.2 % · 1.58^(level − 3), full-speed step =
+`RACK`, `VOLUM`, `SENDS`, `TRANSPOSE` and `SCRUB`, plus `KAST` from 1 to 10: how fast the knob must be spun for
+the full step (`FULL` = 135 · 1.3^(KAST − 5) detents per second, `START` = `FULL` / 3).
+Levels are logarithmic: slow step = 0.2 % · 1.58^(level − 3), full-speed step =
 2.2 % · 1.5^(level − 5), and `MAX` is the difference. Scrub uses the same levels in beats (fraction · 125).
 `BeatStep` checks the file once a second and reads it again when it has changed, so the feel can be tuned while
-Live runs. A mistake in the file shows a status message and keeps the previous values; a missing file gives the
-defaults in `Encoders.DEFAULT_SETTINGS`, which must match the file as shipped.
+Live runs. A mistake in the file shows a status message and keeps the previous values; a missing file or a
+missing name gives the defaults in `Encoders.DEFAULT_SETTINGS`.
 
 **Parameter writes**: always clamp to `[param.min, param.max]`. Macro range is 0–127, volume and sends 0–1.
 

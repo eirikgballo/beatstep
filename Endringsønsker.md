@@ -24,9 +24,10 @@ Mal:
 - **Status:** i arbeid (kode og tester ferdige 2026-10-08, må prøves i Live)
 - **Notater:**
   - Avklart med brukeren: per modus, skala 1–10.
-  - Løsning: `Innstillinger.py` med to tall (rolig, rask) for RACK, VOLUM, SENDS, TRANSPOSE og SCRUB, og
-    akselerasjonskurven (ROLIG_TID, RASK_TID, KURVE). Fila leses på nytt mens Live kjører.
-  - Brukeren vil også se på jevnere akselerasjon. Start med KURVE og ROLIG_TID i fila.
+  - Løsning: `Innstillinger.py` med to tall (rolig, rask) for RACK, VOLUM, SENDS, TRANSPOSE og SCRUB.
+    Fila leses på nytt mens Live kjører.
+  - Akselerasjonen: tre tall (ROLIG_TID, RASK_TID, KURVE) var for mye og satt feil. Erstattet med ett tall, KAST
+    (1–10), og fart målt som hakk siste 0,1 s. Skalaen er satt etter måling av brukerens vridning (se `SIGNALS.md`).
 
 ### Spille fra markører (locators) med pads
 - **Dato:** 2026-10-08

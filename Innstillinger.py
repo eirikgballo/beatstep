@@ -17,24 +17,24 @@
 # ---------------------------------------------------------------------------
 
 #            rolig  rask
-RACK      = (  3,    5 )    # encoder 1–16 i Rack-modus (makroer)
+RACK      = (  4,    8 )    # encoder 1–16 i Rack-modus (makroer)
 VOLUM     = (  3,    5 )    # encoder 1–16 i Volum-modus
 SENDS     = (  3,    5 )    # encoder 1–16 i Sends-modus
 TRANSPOSE = (  5,    5 )    # det store hjulet: volum på valgt spor
 SCRUB     = (  3,    6 )    # det store hjulet mens stop holdes: flytter spillehodet
 
 # ---------------------------------------------------------------------------
-# Akselerasjonskurven, felles for alle. Tiden er sekunder mellom to hakk.
+# KAST: hvor fort du må spinne for å få det raske steget. 1 (lett) til 10 (må spinne hardt).
 #
-#   ROLIG_TID  Tregere enn dette mellom hakkene gir rolig steg. Vanlig sakte vridning: 0,2–0,5 s.
-#   RASK_TID   Raskere enn dette gir fullt rask steg. Vanlig rask vridning: 0,03–0,06 s.
-#              Mellom de to tidene glir steget fra rolig til rask.
-#   KURVE      Formen på overgangen. 1.0 = jevn (rett linje). Høyere tall holder steget lite lenger
-#              og øker det brått mot slutten: 2.0 = myk start, 3.0 = brå.
+# Scriptet måler farten i hakk per sekund. Vanlig vridning er 10–40 hakk/s, et raskt spinn 70–900.
+# Under en tredel av kastefarten får du alltid det rolige steget. Derfra øker steget jevnt, og ved
+# kastefarten får du hele det raske steget.
 #
-# Jevnere akselerasjon: senk KURVE mot 1.0, eller øk ROLIG_TID så overgangen strekkes over et større fartsområde.
+#   KAST                     1     2     3     4     5     6     7     8     9    10
+#   fullt rask ved, hakk/s   47    61    80   104   135   176   228   297   386   501
+#   akselerasjon fra, hakk/s 16    20    27    35    45    59    76    99   129   167
+#
+# Hopper den for lett ved vanlig vridning: øk KAST. Må du spinne for hardt for å nå maks: senk KAST.
 # ---------------------------------------------------------------------------
 
-ROLIG_TID = 0.30
-RASK_TID  = 0.08
-KURVE     = 2.0
+KAST = 5

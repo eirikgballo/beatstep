@@ -1,50 +1,50 @@
 """
-Encoders — relative decoding and time-based acceleration, shared by all modes.
+Encoders — relative decoding and speed-based acceleration, shared by all modes.
 
 The BeatStep encoders run in relative mode 2: 1–63 = clockwise, 65–127 = counter-clockwise.
-They normally send ±1 per detent regardless of speed, so acceleration is based on the time
-between ticks. See SIGNALS.md for the measurements.
+They normally send ±1 per detent regardless of speed, so acceleration is based on how many detents
+arrived lately. See SIGNALS.md for the measurements.
 
 The sensitivity is set by the user in Innstillinger.py, which BeatStep.py reloads when it changes.
 """
 
+from collections import deque
 import time
+
+# The speed of an encoder is the number of detents in this many seconds. The time between two single
+# detents is too jittery to use: Live hands MIDI to the script in small clumps (see SIGNALS.md).
+SPEED_WINDOW = 0.1
 
 
 class Feel:
     """
     Tuning for one kind of encoder.
 
-    min_step:  step per tick as a fraction of the parameter's range when turning very slowly.
-    max_step:  extra step added at full speed (full speed gives min_step + max_step).
-    accel:     curve exponent. 1.0 = linear, 2.0 = gentle, 3.0 = aggressive.
-    fast:      tick interval (s) at or below which the encoder counts as full speed.
-               The most impactful constant: lower it if fast spins feel sluggish.
-    slow:      tick interval (s) at or above which the encoder counts as minimum speed.
+    min_step:    step per detent as a fraction of the parameter's range when turning slowly.
+    max_step:    extra step added at full speed (full speed gives min_step + max_step).
+    start_rate:  detents per second at or below which the encoder gets the slow step.
+    full_rate:   detents per second at or above which it gets the full step. In between the step grows evenly.
     """
 
-    def __init__(self, min_step, max_step, accel, fast, slow):
-        self.min_step = min_step
-        self.max_step = max_step
-        self.accel    = accel
-        self.fast     = fast
-        self.slow     = slow
+    def __init__(self, min_step, max_step, start_rate, full_rate):
+        self.min_step   = min_step
+        self.max_step   = max_step
+        self.start_rate = start_rate
+        self.full_rate  = full_rate
 
 
 # ---------------------------------------------------------------------------
 # Settings (Innstillinger.py)
 # ---------------------------------------------------------------------------
 
-# The values the user can change in Innstillinger.py. These defaults must match the file as shipped.
+# The values the user can change in Innstillinger.py, with the defaults used for names missing from the file.
 DEFAULT_SETTINGS = {
     'RACK':      (3, 5),
     'VOLUM':     (3, 5),
     'SENDS':     (3, 5),
     'TRANSPOSE': (5, 5),
     'SCRUB':     (3, 6),
-    'ROLIG_TID': 0.30,
-    'RASK_TID':  0.08,
-    'KURVE':     2.0,
+    'KAST':      6,
 }
 
 # Feel name used by the script → setting name.
@@ -66,6 +66,13 @@ def fast_step(level):
     return 0.022 * 1.5 ** (level - 5)
 
 
+def full_rate(level):
+    """KAST level 1–10 → detents per second that give the full step (level 6 = 176, and acceleration
+    starts at a third of that). Normal turning was measured at 10–40 detents per second and a fast spin
+    at 70–900."""
+    return 135.0 * 1.3 ** (level - 5)
+
+
 def configure(settings):
     """Build the feels from the names in `settings` (the contents of Innstillinger.py). Missing names keep
     their default. Raises ValueError with a message for the user, and then nothing is changed."""
@@ -78,9 +85,8 @@ def configure(settings):
             raise ValueError('%s must be a number from %s to %s' % (name, low, high))
         return float(value)
 
-    slow, fast, accel = number('ROLIG_TID', 0.01, 5), number('RASK_TID', 0.001, 5), number('KURVE', 0.1, 10)
-    if fast >= slow:
-        raise ValueError('RASK_TID must be lower than ROLIG_TID')
+    full = full_rate(number('KAST', 1, 10))
+    start = full / 3.0
 
     feels = {}
     for feel_name, name in _FEEL_SETTINGS.items():
@@ -91,7 +97,7 @@ def configure(settings):
         scale = _SCRUB_BEATS if feel_name == 'scrub' else 1.0
         min_step = slow_step(levels[0]) * scale
         max_step = max(0.0, fast_step(levels[1]) * scale - min_step)
-        feels[feel_name] = Feel(min_step, max_step, accel, fast, slow)
+        feels[feel_name] = Feel(min_step, max_step, start, full)
     _feels.clear()
     _feels.update(feels)
 
@@ -105,11 +111,11 @@ configure({})
 
 
 class Accelerator:
-    """Turns raw relative CC values into signed step fractions, tracking tick timing per encoder."""
+    """Turns raw relative CC values into signed step fractions, tracking the speed of each encoder."""
 
     def __init__(self):
-        # Last-tick timestamps. Key: encoder index (0-15) or 'transpose'.
-        self._last_tick = {}
+        # Times of the latest detents. Key: encoder index (0-15), 'transpose' or 'scrub'.
+        self._detents = {}
 
     def delta(self, key, value, feel):
         """Signed step as a fraction of the parameter range, or None for a neutral value."""
@@ -118,16 +124,17 @@ class Accelerator:
         raw_delta = value if value < 64 else value - 128
         direction = 1 if raw_delta > 0 else -1
 
-        # The first tick after start has no previous tick and counts as slow (dt=inf).
         now = time.monotonic()
-        dt = now - self._last_tick.get(key, float('-inf'))
-        self._last_tick[key] = now
+        detents = self._detents.setdefault(key, deque())
+        detents.append(now)
+        while detents[0] < now - SPEED_WINDOW + 1e-6:  # the margin keeps a detent exactly one window old out
+            detents.popleft()
+        rate = len(detents) / SPEED_WINDOW   # a single detent after a pause is 10 per second: slow
 
-        velocity = max(0.0, min(1.0, (feel.slow - dt) / (feel.slow - feel.fast)))
+        velocity = max(0.0, min(1.0, (rate - feel.start_rate) / (feel.full_rate - feel.start_rate)))
         if abs(raw_delta) > 1:
             velocity = 1.0  # the hardware's own acceleration kicked in: the knob is spun very fast
-        step = feel.min_step + (velocity ** feel.accel) * feel.max_step
-        return direction * step
+        return direction * (feel.min_step + velocity * feel.max_step)
 
 
 def nudge(param, fraction):

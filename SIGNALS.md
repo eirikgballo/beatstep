@@ -182,6 +182,20 @@ videresender pad-notene på CH1. Sekvensnoter i området 36–51 vil da tolkes s
 `CMix._encoder_delta` bruker bare retningen og tiden mellom hakk, og kaster bort størrelsen.
 Enten bør størrelsen brukes, eller så slås hardware-akselerasjonen av via sysex.
 
+## Encoder-fart ved vanlig vridning og spinn (målt 2026-10-08 på Mac)
+
+Brukeren vred encoder 1 i vanlig tempo (103 hakk) og spant encoder 2 fort (134 hakk). Tider fra `bs.py listen`.
+
+| | Tid mellom hakk, median (p10–p90) | Fart over 0,1 s, median (p10–p90, maks) | Verdier over 1 |
+|---|---|---|---|
+| Vanlig vridning | 75 ms (44–153) | 20 hakk/s (10–30, maks 40) | ingen |
+| Raskt spinn | 9 ms (3–29) | 70 hakk/s (20–740, maks 900) | 23 av 134, opptil 20 |
+
+- De gamle tersklene (fullt steg under 80 ms mellom hakk) gjorde at vanlig vridning ble behandlet som rask.
+  Tallene lenger opp i denne fila om «rask vridning 8–25 ms, sakte 0,6–0,9 s» stemmer, men vanlig vridning ligger imellom.
+- Maskinvare-akselerasjonen ga verdier opptil 20 her, ikke bare 12.
+- Scriptet måler nå fart som antall hakk siste 0,1 s i stedet for tid mellom to hakk.
+
 ## Sequencer-modus (etter cntrl/seq)
 
 - **Padene sender ingen noter.** Encoderne redigerer sekvensens steg og sender noter på CH1 i stedet for CC.
