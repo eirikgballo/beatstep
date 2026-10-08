@@ -17,6 +17,7 @@ MIDI Remote Script for Arturia BeatStep i Ableton Live 11 (Python 3.7). Hobbypro
 1. `handoff/HANDOFF.md`: status og neste steg.
 2. `SIGNALS.md`: målt hardware-oppførsel. Fasit når den er i strid med DESIGN.md.
 3. `DESIGN.md`: spec. Koden skal følge den.
+4. `Endringsønsker.md`: brukerens ønsker. Nye ønsker registreres der med malen, og flyttes til «Gjennomført» når de er gjort.
 
 ## Arbeidsmåte
 
