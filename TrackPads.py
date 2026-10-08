@@ -14,6 +14,8 @@ BLINK_INTERVAL = 0.3   # seconds per blink phase for solo pads
 # The warning blinks all 16 pads, so it gets a slower phase than the solo blink.
 WARNING_BLINK_INTERVAL = 0.8
 PADS_PER_PAGE = 16
+# While stop is held, the last pad is the start of the loop and the others are markers.
+LOOP_START_PAD = 15
 
 
 class TrackPads:
@@ -31,6 +33,10 @@ class TrackPads:
         # True while the BeatStep is in sequencer mode: the pads don't send notes, so instead of
         # track colors all pads blink red as a warning.
         self.suspended = False
+
+        # True while stop is held: the pads show which markers exist (blue) and the loop start (magenta).
+        # Stop + pad plays from there, see BeatStep.
+        self.showing_markers = False
 
         # Tracks we have solo listeners on.
         self._subscribed_tracks = []
@@ -93,6 +99,10 @@ class TrackPads:
     def _pad_color(self, pad_index):
         if self.suspended:
             return Sysex.COLOR_RED if self._blink_on else Sysex.COLOR_OFF
+        if self.showing_markers:
+            if pad_index == LOOP_START_PAD:
+                return Sysex.COLOR_MAGENTA
+            return Sysex.COLOR_BLUE if pad_index < len(self._song.cue_points) else Sysex.COLOR_OFF
         if self.picking_page:
             if pad_index == self._page:
                 return Sysex.COLOR_RED

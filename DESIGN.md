@@ -77,6 +77,9 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 |--------|--------|
 | Single tap pad N | Select track `page_start + N` |
 | `shift` + pad N | Toggle solo on the track **without selecting it**. Solo is additive |
+| `stop` + pad 1–15 | Play from marker N (locators in the arrangement, counted from the start of the song). Stopped: jump and start playing. Playing: jump with Live's global quantization. No marker N: status message |
+| `stop` + pad 16 | Play from the start of the loop (`song.loop_start`), immediately |
+| `stop` + transpose | Scrub: move the playhead, a quarter of a beat per detent when turning slowly and up to 4 beats at full speed (`SCRUB_FEEL`) |
 | Tap a pad without a track | Nothing |
 
 ### Encoders
@@ -121,7 +124,8 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 | `store` | Sends mode |
 | `shift` | Modifier for `shift` + pad (solo), `shift` + encoder (reset to default) and `shift` + transpose (master volume) |
 | `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
-| `play`, `stop` | Firmware starts/stops its sequencer. Script only repaints on release |
+| `stop` | Pressed on its own: stops playback in Live, or starts it from the playhead if the song is stopped (on release). Held: the pads show the markers (blue = marker exists) and the loop start (pad 16, magenta), `stop` + pad plays from there, and `stop` + transpose scrubs. Firmware also sends MIDI Stop, which Live ignores |
+| `play` | Firmware starts its sequencer. Script only repaints on release |
 | `ext sync` | Opens the page picker, or closes it without changing page |
 
 > Firmware side effects (see SIGNALS.md): `recall`/`store` + pad recalls/stores a preset, `chan` + pad changes the

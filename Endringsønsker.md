@@ -16,19 +16,33 @@ Mal:
 
 ## Åpne
 
-### Nullstille parameter med shift + encoder
+### Enkel justering av encoder-følsomhet
 - **Dato:** 2026-10-08
-- **Ønske:** hold shift og vri en encoder for å nullstille parameteren den styrer, slik dobbeltklikk gjør i Ableton.
-- **Hvorfor:** viktig i bruk. I dag må man vri tilbake til 0 for hånd, eller bruke musa i Live.
-- **Status:** klar
+- **Ønske:** justere følsomheten for encoderne selv, enkelt, uten å lete i koden. For eksempel et tall fra 1 til 10
+  for rolig vridning og ett for rask vridning (akselerasjon), samlet øverst i en fil eller i en egen fil.
+- **Hvorfor:** følelsen må prøves fram i bruk, og i dag ligger den som fem tall per knappetype i `Encoders.py`.
+- **Status:** avklares (drøftes med brukeren)
 - **Notater:**
-  - Dobbeltklikk i Ableton setter parameteren til **standardverdien**, ikke alltid 0: makro 0, volum 0 dB, sends −∞.
-    Live har `parameter.default_value`, så bruk den for å oppføre seg likt.
-  - Gjelder alle tre modusene: makro i Rack, volum i Volum, send A/B i Sends.
-  - Shift + encoder sender vanlig CC i kontrollmodus (målt, se `SIGNALS.md`). Shift + transpose er master-volum
-    og berøres ikke.
-  - Ett hakk mens shift holdes bør være nok til å nullstille. Videre vridning med shift inne bør ikke endre verdien.
-  - Falsk Live (`tools/fakelive/fake_song.py`) må få `default_value` på `Parameter`.
+  - I dag: `KNOB_FEEL` (alle 16 encodere i alle moduser), `TRANSPOSE_FEEL`, `SCRUB_FEEL`.
+  - Spørsmål: per modus eller per encoder? Skala 1–10 eller ekte enheter? Kan fila leses på nytt uten å restarte Live?
+
+### Spille fra markører (locators) med pads
+- **Dato:** 2026-10-08
+- **Ønske:** starte avspilling i Live fra en markør med en knapp + pad. Pad 1 spiller fra markør 1, pad 2 fra markør 2 osv.
+- **Hvorfor:** kunne hoppe rundt i låta fra BeatStepen uten å bruke musa.
+- **Status:** i arbeid (kode og tester ferdige 2026-10-08, må prøves i Live)
+- **Notater:**
+  - Knapp: hold stop + pad. Shift + pad er solo, ext sync er sidevelgeren, og stop var ledig.
+  - Målt: padene sender noter mens stop holdes, og firmwaren slukker padene ved stop-trykket (se `SIGNALS.md`).
+    Scriptet maler derfor markørene på padene mens stop holdes (blå = markør finnes).
+  - Live: `song.cue_points` sortert på tid, `cue_point.jump()`, `song.continue_playing()` hvis låta står stille.
+  - Markørene bekreftet i Live 2026-10-08. Hopp mens låta spiller følger Lives globale kvantisering.
+  - Lagt til etter første prøve (må prøves i Live): stop alene stopper avspillingen (ved slipp),
+    stop + pad 16 spiller fra loopstart (pad 16 lyser magenta), stop + transpose scrubber i tidslinja.
+  - Maks 15 markører, siden pad 16 er loopstart.
+  - Bekreftet i Live 2026-10-08: stop alene stopper, scrub virker både med og uten avspilling.
+  - Justert etter prøve (må prøves): stop alene starter avspilling fra spillehodet når låta står stille,
+    og scrub er finere (1/4 slag per hakk sakte, opptil 4 slag fort, mot 1–8 før).
 
 ### Følelsen i Volum- og Sends-modus
 - **Dato:** 2026-10-07
@@ -50,6 +64,12 @@ Mal:
 - **Status:** klar (etter at Mac-feilen i `handoff/HANDOFF.md` er løst)
 
 ## Gjennomført
+
+### Nullstille parameter med shift + encoder
+- **Dato:** 2026-10-08, commit 9d8f3ac
+- **Ønske:** hold shift og vri en encoder for å nullstille parameteren den styrer, slik dobbeltklikk gjør i Ableton.
+- **Løsning:** ett hakk med shift inne setter parameteren til `default_value`. Gjelder makro, volum og sends.
+  Bekreftet i Live i Rack-modus.
 
 ### Solo uten å velge sporet
 - **Dato:** 2026-10-07, commit 5b5398d

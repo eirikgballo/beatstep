@@ -127,11 +127,27 @@ class _SongView(_Listenable):
         self._remove('selected_track', fn)
 
 
+class CuePoint:
+    """En markør (locator) i arrangementet."""
+
+    def __init__(self, song, name, time):
+        self._song = song
+        self.name = name
+        self.time = time
+
+    def jump(self):
+        self._song.current_song_time = self.time
+
+
 class Song(_Listenable):
 
     def __init__(self, tracks):
         _Listenable.__init__(self)
         self._tracks = list(tracks)
+        self.cue_points = ()
+        self.is_playing = False
+        self.current_song_time = 0.0
+        self.loop_start = 0.0
         self.master_track = MasterTrack()
         self.view = _SongView(self._tracks[0] if self._tracks else self.master_track)
 
@@ -145,7 +161,22 @@ class Song(_Listenable):
     def remove_tracks_listener(self, fn):
         self._remove('tracks', fn)
 
+    def continue_playing(self):
+        self.is_playing = True
+
+    def stop_playing(self):
+        self.is_playing = False
+
+    def jump_by(self, beats):
+        if self.current_song_time + beats < 0:
+            raise RuntimeError('Invalid song time %r' % (self.current_song_time + beats))
+        self.current_song_time += beats
+
     # Hjelpere for å simulere endringer gjort i Live-UI-et.
+
+    def add_marker(self, name, time):
+        # Live holder ikke lista sortert på tid, så nye markører legges bare bakerst.
+        self.cue_points += (CuePoint(self, name, time),)
 
     def create_track(self, name=None, devices=None):
         track = Track(name or 'Spor %d' % (len(self._tracks) + 1), devices)

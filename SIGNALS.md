@@ -53,6 +53,14 @@ play 28, stop 29, cntrl/seq 30, ext sync 31, store 32, chan 33. Recall (CC 5) og
 Etter et overlegg setter firmwaren tilbake **sine** pad-farger, ikke scriptets. Scriptet må male alle pads
 på nytt når store, recall, chan, shift eller cntrl/seq slippes.
 
+## Stop holdt inne (målt 2026-10-08 på Mac, med scriptet i Live)
+
+- Trykk: MIDI Stop `FC`, så CC 29 = 127 på CH10. Slipp: CC 29 = 0.
+- Padene sender vanlige noter på CH10 mens stop holdes (pad 1 og 2 målt).
+- **Nesten alle pads ble mørke da stop ble trykket** (brukerens observasjon, hvilke som ble stående er ikke notert).
+  Det strider mot tabellen over, som sier «Uendret» for stop fra Windows-målingen. Ikke avklart hvorfor.
+  Scriptet maler derfor alle pads på nytt rett etter stop-trykket, ikke bare etter slipp.
+
 ## Burst og timing
 
 - 16 LED-meldinger sendt uten pause: alle 16 tenner.

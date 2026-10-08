@@ -36,6 +36,11 @@ KNOB_FEEL = Feel(min_step=0.002, max_step=0.02, accel=2.0, fast=0.08, slow=0.30)
 TRANSPOSE_FEEL = Feel(min_step=0.005, max_step=0.02, accel=1.5, fast=0.08, slow=0.25)
 
 
+# The transpose knob while stop is held (scrub). Steps are in beats here: a quarter of a beat per detent
+# when turning slowly, up to 4 beats at full speed. 1 to 8 beats was tried first and jumped too far.
+SCRUB_FEEL = Feel(min_step=0.25, max_step=3.75, accel=2.0, fast=0.08, slow=0.25)
+
+
 class Accelerator:
     """Turns raw relative CC values into signed step fractions, tracking tick timing per encoder."""
 

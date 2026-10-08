@@ -16,10 +16,10 @@ from _Framework.ControlSurface import ControlSurface
 from _Framework import Task
 
 from . import Sysex
-from .Encoders import Accelerator, TRANSPOSE_FEEL, nudge
+from .Encoders import Accelerator, SCRUB_FEEL, TRANSPOSE_FEEL, nudge
 from .RackMode import RackMode
 from .SendsMode import SendsMode
-from .TrackPads import TrackPads
+from .TrackPads import LOOP_START_PAD, TrackPads
 from .VolumeMode import VolumeMode
 
 # ---------------------------------------------------------------------------
@@ -98,6 +98,8 @@ class BeatStep(ControlSurface):
         # replaces the queued one, so blinking and repaints don't pile up.
         self._midi_queue = OrderedDict()
         self._shift_held = False
+        self._stop_held = False
+        self._stop_used = False  # a pad or the transpose knob was used while stop was held
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
         self._pads = TrackPads(
@@ -196,7 +198,9 @@ class BeatStep(ControlSurface):
         if note not in _PAD_NOTE_TO_INDEX:
             return
         idx = _PAD_NOTE_TO_INDEX[note]
-        if velocity > 0 and self._shift_held:
+        if velocity > 0 and self._stop_held:
+            self._play_from_marker(idx)
+        elif velocity > 0 and self._shift_held:
             self._pads.toggle_solo(idx)
         elif velocity > 0:
             was_picking = self._pads.picking_page
@@ -210,11 +214,28 @@ class BeatStep(ControlSurface):
         """Encoders and function buttons."""
         if ENCODER_CC_BASE <= cc < ENCODER_CC_BASE + 16:
             self._mode.on_encoder(cc - ENCODER_CC_BASE, value, reset=self._shift_held)
+        elif cc == TRANSPOSE_CC and self._stop_held:
+            self._scrub(value)
         elif cc == TRANSPOSE_CC:
             self._on_transpose_encoder(value)
         elif cc in _BUTTON_CCS:
             if cc == BTN_SHIFT_CC:
                 self._shift_held = value > 0
+            elif cc == BTN_STOP_CC:
+                # While stop is held the pads show the markers and stop + pad plays from one.
+                # The firmware turns the pads off when stop is pressed, so all of them are repainted.
+                self._stop_held = value > 0
+                self._pads.showing_markers = self._stop_held
+                if self._stop_held:
+                    self._stop_used = False
+                    self._pads.update_leds(force=True)
+                elif not self._stop_used:
+                    # Stop pressed on its own: stop, or play on from the playhead. Done on release,
+                    # since on press the script can't know whether a pad or the knob will follow.
+                    if self.song().is_playing:
+                        self.song().stop_playing()
+                    else:
+                        self.song().continue_playing()
             elif cc == BTN_EXTSYNC_CC and value > 0:
                 self._pads.toggle_page_picker()
             elif cc in self._modes and value > 0 and self._modes[cc] is not self._mode:
@@ -273,6 +294,32 @@ class BeatStep(ControlSurface):
             self._last_sent = time.perf_counter()
         if DEBUG_MIDI and count and not self._midi_queue:
             self.log_message('BeatStep: MIDI queue drained')
+
+    def _play_from_marker(self, index):
+        """Jump to marker 1–15, counted from the start of the song, or to the loop start (last pad),
+        and make sure the song plays."""
+        self._stop_used = True
+        song = self.song()
+        if index == LOOP_START_PAD:
+            song.current_song_time = song.loop_start
+        else:
+            markers = sorted(song.cue_points, key=lambda cue: cue.time)[:LOOP_START_PAD]
+            if index >= len(markers):
+                self.show_message('No marker %d' % (index + 1))
+                return
+            # While the song plays, jump() follows Live's global quantization, like a click on the marker.
+            markers[index].jump()
+        if not song.is_playing:
+            song.continue_playing()
+
+    def _scrub(self, value):
+        """Stop + transpose knob: move the playhead along the timeline."""
+        self._stop_used = True
+        beats = self._accelerator.delta('scrub', value, SCRUB_FEEL)
+        if beats is None:
+            return
+        song = self.song()
+        song.jump_by(max(beats, -song.current_song_time))  # not past the start of the song
 
     def _on_transpose_encoder(self, value):
         """Transpose encoder → volume of the selected track in every mode, or master with shift held."""
