@@ -32,6 +32,8 @@ def test_the_real_settings_file_is_valid_and_complete(clock):
     with io.open(os.path.join(REPO, 'Innstillinger.py'), encoding='utf-8') as f:
         exec(f.read(), real)
     assert set(enc.DEFAULT_SETTINGS) <= set(real)
+    assert isinstance(real['STARTSPOR'], int) and real['STARTSPOR'] >= 1
+    assert real['SCRUB_SNAP'] >= 0
     enc.configure(real)
 
 
@@ -76,6 +78,9 @@ def test_modes_have_separate_sensitivity(settings_file, make_rig):
     ('KAST = "hardt"\n', 'KAST must be a number'),
     ('KAST = 11\n', 'KAST must be a number from 1 to 10'),
     ('RACK = (3, 5\n', 'error in Innstillinger.py'),
+    ('STARTSPOR = 0\n', 'STARTSPOR must be a whole number from 1'),
+    ('STARTSPOR = 2.5\n', 'STARTSPOR must be a whole number from 1'),
+    ('SCRUB_SNAP = -1\n', 'SCRUB_SNAP must be 0 or a positive number of beats'),
 ])
 def test_mistake_in_file_shows_message_and_keeps_old_values(settings_file, make_rig, text, part):
     rig = make_rig()
@@ -110,3 +115,117 @@ def test_old_setting_names_are_ignored(settings_file, make_rig):
     rig = make_rig()
     rig.advance(1.0)
     assert not any('error' in m for m in rig.h.messages)
+
+
+# --- STARTSPOR ---------------------------------------------------------------
+
+def test_first_track_setting_puts_that_track_on_pad_1(settings_file, make_rig):
+    _write(settings_file, 'STARTSPOR = 3\n')
+    rig = make_rig()
+    rig.tap(1)
+    assert rig.selected is rig.track(3)
+    rig.shift_tap(2)
+    assert rig.track(4).solo
+
+
+def test_first_track_setting_moves_volume_encoders_and_pages(settings_file, make_rig):
+    _write(settings_file, 'STARTSPOR = 3\n')
+    rig = make_rig()
+    rig.press('recall')
+    rig.turn(1)
+    assert rig.track(3).mixer_device.volume.value > 0.85
+    assert rig.track(1).mixer_device.volume.value == 0.85
+    rig.press('ext sync')
+    rig.tap(2)
+    rig.tap(1)
+    assert rig.selected is rig.track(19)
+
+
+def test_first_track_setting_can_be_changed_while_running(settings_file, make_rig):
+    rig = make_rig()
+    rig.clear()
+    _write(settings_file, 'STARTSPOR = 2\n')
+    rig.advance(1.0)
+    assert rig.leds()[1] == 16   # blue: track 1 (selected, red) is no longer on a pad
+    rig.tap(1)
+    assert rig.selected is rig.track(2)
+
+
+# --- SCRUB_SNAP --------------------------------------------------------------
+
+def _scrub(rig, **kwargs):
+    rig.button_down('stop')
+    rig.turn('transpose', **kwargs)
+    rig.button_up('stop')
+
+
+def test_scrub_snap_moves_one_grid_step_per_detent(settings_file, make_rig):
+    _write(settings_file, 'SCRUB_SNAP = 0.25\nSCRUB = (1, 1)\n')     # slow step far below one grid step
+    rig = make_rig()
+    rig.song.click_in_arrangement(8.0)
+    rig.button_down('stop')
+    rig.turn('transpose', ticks=3)
+    assert rig.song.current_song_time == pytest.approx(8.75)
+    rig.turn('transpose', value=127, ticks=1)
+    assert rig.song.current_song_time == pytest.approx(8.5)
+
+
+def test_scrub_snap_first_detent_goes_to_the_nearest_line(settings_file, make_rig):
+    _write(settings_file, 'SCRUB_SNAP = 1\n')
+    rig = make_rig()
+    rig.song.click_in_arrangement(8.3)
+    rig.button_down('stop')
+    rig.turn('transpose', value=127)
+    assert rig.song.current_song_time == pytest.approx(8.0)
+    rig.song.click_in_arrangement(8.3)
+    rig.button_up('stop')
+    rig.h.script._stopped_target = None
+    rig.button_down('stop')
+    rig.turn('transpose', value=1)
+    assert rig.song.current_song_time == pytest.approx(9.0)
+
+
+def test_scrub_snap_fast_spin_moves_several_steps_and_stays_on_the_grid(settings_file, make_rig):
+    _write(settings_file, 'SCRUB_SNAP = 0.25\n')
+    rig = make_rig()
+    rig.song.click_in_arrangement(8.1)
+    rig.button_down('stop')
+    rig.turn('transpose', ticks=30, interval=0.002)
+    time = rig.song.current_song_time
+    assert time > 8.1 + 30 * 0.25
+    assert time / 0.25 == pytest.approx(round(time / 0.25))
+
+
+def test_scrub_snap_stops_at_the_start_of_the_song(settings_file, make_rig):
+    _write(settings_file, 'SCRUB_SNAP = 4\n')
+    rig = make_rig()
+    rig.song.click_in_arrangement(2.0)
+    rig.button_down('stop')
+    rig.turn('transpose', value=127, ticks=3)
+    assert rig.song.current_song_time == 0.0
+
+
+def test_pan_step_setting_changes_the_scroll_distance(settings_file, make_rig):
+    _write(settings_file, 'PAN_STEG = 50\n')
+    rig = make_rig()
+    sent = []
+    rig.h.script._scroll_socket = type('S', (), {'sendto': lambda self, data, address: sent.append(data)})()
+    rig.press('store')
+    rig.tap(12)
+    assert sent == [b'scroll 50 0']
+
+
+def test_shift_tap_time_setting(settings_file, make_rig):
+    _write(settings_file, 'SHIFT_TRYKK = 1.0\n')
+    rig = make_rig()
+    rig.button_down('shift')
+    rig.advance(0.6)
+    rig.button_up('shift')
+    assert rig.h.c.application.view.visible == 'Session'
+
+
+def test_shift_tap_can_be_switched_off(settings_file, make_rig):
+    _write(settings_file, 'SHIFT_TRYKK = 0\n')
+    rig = make_rig()
+    rig.press('shift')
+    assert rig.h.c.application.view.visible == 'Arranger'

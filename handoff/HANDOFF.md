@@ -1,21 +1,27 @@
-# Overlevering — status 2026-10-08 (kveld)
+# Overlevering — status 2026-10-09 (kveld)
 
-Scriptet virker i Live 11.3.43 på Macen. Mac-feilen fra forrige overlevering er løst, og det er lagt til
-nullstilling, transport, variasjonsvelger, visningsbytte og en innstillingsfil. Alt er committet lokalt på
-`first-refactoring`, men **ikke pushet**: denne Macen mangler GitHub-innlogging for git (`gh` er ikke installert),
-så brukeren må kjøre `git push` selv. Branchen ligger 9 commits foran GitHub (10 med denne overleveringen).
+Scriptet virker i Live 11.3.43 på Macen. 2026-10-09 ble Sends-modus byttet ut med Record-modus (opptak, undo,
+redo, metronom, markør, loop, zoom og panorering), sporvalg i Rack-modus armer sporet, og `Innstillinger.py`
+fikk `STARTSPOR`, `SCRUB_SNAP`, `PAN_STEG` og `SHIFT_TRYKK`. Panoreringen går gjennom et hjelpeprogram utenfor
+Live (`tools/scrollhjelper`, bare Mac). Denne Macen manglet GitHub-innlogging for git 2026-10-08, så sjekk
+`git status -sb` for å se om alt er pushet.
 
 ## Grepene slik de er nå
 
 | Grep | Gjør |
 |---|---|
-| pad | Velg spor |
+| pad | Velg spor. I Rack-modus armes sporet også (og de andre mister armingen) |
 | shift + pad | Solo av/på uten å velge sporet |
 | shift + encoder | Nullstill parameteren til standardverdi (makro, volum, send) |
 | shift + transpose-hjulet | Nullstill volumet på valgt spor. Master-volum har ingen kontroll lenger |
-| shift + ext sync | Bytt mellom Session og Arrangement (som Tab) |
+| kort trykk på shift alene | Bytt mellom Session og Arrangement (som Tab). Holdt lenger enn `SHIFT_TRYKK` (0,4 s, i `Innstillinger.py`) eller brukt til noe: ingenting |
 | ext sync | Sidevelger (16 spor per side) |
-| chan / recall / store | Rack-, Volum- og Sends-modus |
+| chan / recall / store | Rack-, Volum- og Record-modus |
+| Record-modus: pad 1–8 | Opptak av/på (arrangement), undo, redo, metronom, markør på nåla (lag/fjern), loop av/på, sett loopstart, sett loopslutt. Encoderne styrer makroene |
+| Record-modus: pad 9 / 10 | Zoom inn / ut i arrangementet (bekreftet i Live) |
+| Record-modus: pad 11–14 | Panorer arrangementet venstre / høyre / opp / ned. Krever scrollhjelperen (`tools/scrollhjelper`, bare Mac, må bygges med `swiftc`, ha Tilgjengelighet-tilgang). Scriptet starter den selv sammen med Live, og da må **Live** ha Tilgjengelighet-tilgang (og startes på nytt etter at den er gitt). Bekreftet i Live |
+| (forutsetning) | Lives «Start Transport With Record» må være Off, ellers starter pad 1 avspilling |
+| Record-modus: shift + pad | Velg og arm spor (padene viser sporene mens shift holdes). Ingen solo her |
 | chan en gang til i Rack-modus | Variasjonsvelger: pad N henter makro-variasjon N (rød = valgt, magenta = finnes). Chan lukker |
 | stop alene | Stopp, eller start avspilling (fra stoppunktet, eller fra dit det er scrubbet) |
 | stop + pad 1–15 | Spill fra markør N (blå pads mens stop holdes) |
@@ -24,6 +30,9 @@ så brukeren må kjøre `git push` selv. Branchen ligger 9 commits foran GitHub 
 
 Følsomheten justeres i `Innstillinger.py`: to tall 1–10 (rolig, rask) per modus og `KAST` (hvor fort man må spinne
 for fullt steg). Fila leses på nytt mens Live kjører. Brukerens verdier nå: `RACK = (4, 8)`, `KAST = 5`.
+`STARTSPOR` i samme fil er sporet som havner på pad 1 (brukeren har 3: de to øverste sporene hoppes over).
+`SCRUB_SNAP` er rutenettet for scrubbing i slag (brukeren har 0.25: ett hakk = en sekstendel, 0 = fri).
+Lives eget rutenett og «Snap to Grid» finnes ikke i API-et, så scriptet kan ikke følge dem.
 
 ## Det viktigste som ble funnet (detaljer og tall i `SIGNALS.md`)
 
@@ -45,7 +54,8 @@ for fullt steg). Fila leses på nytt mens Live kjører. Brukerens verdier nå: `
 
 - Stop + pad 16 (loopstart) fra stillstand. Bruker samme metode som scrubbing, som er bekreftet.
 - Shift + transpose-hjulet nullstiller volumet på valgt spor.
-- Volum- og Sends-modus er lite prøvd (nullstilling og følsomhet der er bare testet i pytest).
+- Volum-modus er lite prøvd (nullstilling og følsomhet der er bare testet i pytest).
+- Record-modus og arming ved sporvalg (lagt til 2026-10-09, bare testet i pytest). Se notatene i `Endringsønsker.md`.
 - Sidevelgeren og sequencer-varselet er ikke prøvd på Macen.
 
 ## Uforklart
@@ -66,13 +76,13 @@ for fullt steg). Fila leses på nytt mens Live kjører. Brukerens verdier nå: `
   Tilbakelesing (`readback`) og gap-testen ble gjort med engangsscript og bør inn som kommandoer i `bs.py`.
 - **Falsk Live gir alltid samme sporobjekt**, så testene kunne ikke fange `is`-feilen på valgt spor.
 - **Master-volum** har ingen kontroll. Forslag som ikke er målt: chan + transpose-hjulet.
-- Åpne ønsker: følelsen i Volum/Sends (kan nå prøves i `Innstillinger.py`), filtrere enkelthakk i motsatt retning.
+- Åpne ønsker: følelsen i Volum (kan nå prøves i `Innstillinger.py`), filtrere enkelthakk i motsatt retning.
 - Vise/skjule variasjonsvisningen i Live er ikke mulig: API-et har ingen egenskap for det.
 
 ## Praktisk for neste økt
 
 - Live laster koden bare ved oppstart. Unntak: `Innstillinger.py` leses på nytt innen et sekund.
-- `.venv` finnes i prosjektmappa på Macen. `.venv/bin/python -m pytest tests` kjører 135 tester uten hardware.
+- `.venv` finnes i prosjektmappa på Macen. `.venv/bin/python -m pytest tests` kjører 169 tester uten hardware.
 - `bs.py listen --log logs/x.log` kan kjøre samtidig med Live og er den raskeste måten å se hva BeatStepen sender.
 - `DEBUG_MIDI` og `DEBUG_TRANSPORT` i `BeatStep.py` er av. Slå på for å logge til Lives Log.txt
   (innkommende MIDI, og hvor avspilling starter etter scrubbing).

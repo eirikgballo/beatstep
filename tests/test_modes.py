@@ -24,7 +24,7 @@ def test_boots_in_rack_mode_with_chan_lit(make_rig, clock):
     assert leds['recall'] == OFF and leds['store'] == OFF
 
 
-@pytest.mark.parametrize('button, mode', [('recall', 'Volume'), ('store', 'Sends'), ('chan', 'Rack')])
+@pytest.mark.parametrize('button, mode', [('recall', 'Volume'), ('store', 'Record'), ('chan', 'Rack')])
 def test_mode_buttons_switch_mode_and_light_only_their_button(rig, button, mode):
     if button == 'chan':
         rig.press('recall')
@@ -184,28 +184,227 @@ def test_volume_on_missing_track_is_ignored(rig):
     assert rig.h.messages[-1] == 'BeatStep: Volume mode'
 
 
-# --- Sends -----------------------------------------------------------------
+# --- Record ----------------------------------------------------------------
 
-def test_sends_encoders_1_to_8_control_send_a(rig):
+def test_record_mode_encoders_still_control_macros(rig):
     rig.press('store')
     rig.turn(3)
-    sends = rig.track(3).mixer_device.sends
-    assert sends[0].value > 0 and sends[1].value == 0
+    assert _macro(rig.track(1), 3).value > 0
 
 
-def test_sends_encoders_9_to_16_control_send_b_of_same_tracks(rig):
+def test_record_mode_pads_show_actions(rig):
+    rig.song.undo_steps = 1
     rig.press('store')
-    rig.turn(11)
-    sends = rig.track(3).mixer_device.sends
-    assert sends[1].value > 0 and sends[0].value == 0
+    leds = rig.leds()
+    assert leds[1] == BLUE and leds[2] == BLUE and leds[3] == OFF
+    assert all(leds[n] == BLUE for n in range(4, 9))
+    assert leds[9] == MAGENTA and leds[10] == MAGENTA
+    assert all(leds[n] == BLUE for n in range(11, 15))
+    assert leds[15] == OFF and leds[16] == OFF
 
 
-def test_sends_have_own_8_track_paging(rig):
+def test_record_pad_toggles_arrangement_record_without_starting_playback(rig):
+    rig.press('store')
+    rig.tap(1)
+    assert rig.song.record_mode and not rig.song.is_playing
+    rig.tap(1)
+    assert not rig.song.record_mode
+    assert rig.leds()[1] == BLUE
+
+
+def test_record_pad_blinks_red_while_recording_is_on(rig):
+    rig.press('store')
+    rig.tap(1)
+    seen = set()
+    for _ in range(8):
+        rig.advance(0.1)
+        seen.add(rig.leds()[1])
+    assert seen == {RED, OFF}
+
+
+def test_record_mode_pad_does_not_select_track(rig):
+    rig.press('store')
+    rig.tap(15)
+    assert rig.selected is rig.track(1)
+
+
+def test_undo_and_redo_pads(rig):
+    rig.song.undo_steps = 2
+    rig.press('store')
+    rig.tap(2)
+    assert (rig.song.undo_steps, rig.song.redo_steps) == (1, 1)
+    assert rig.leds()[3] == BLUE
+    rig.tap(3)
+    assert (rig.song.undo_steps, rig.song.redo_steps) == (2, 0)
+
+
+def test_undo_with_nothing_to_undo_shows_message(rig):
+    rig.press('store')
+    rig.tap(2)
+    assert 'Nothing to undo' in rig.h.messages
+    rig.tap(3)
+    assert 'Nothing to redo' in rig.h.messages
+
+
+def test_metronome_pad_toggles_metronome(rig):
+    rig.press('store')
+    rig.tap(4)
+    assert rig.song.metronome and rig.leds()[4] == RED
+    rig.tap(4)
+    assert not rig.song.metronome
+
+
+def test_marker_pad_adds_a_marker_at_the_needle_and_removes_it_again(rig):
+    rig.song.click_in_arrangement(12.0)
+    rig.press('store')
+    rig.tap(5)
+    assert [cue.time for cue in rig.song.cue_points] == [12.0]
+    assert rig.leds()[5] == RED
+    rig.tap(5)
+    assert rig.song.cue_points == ()
+    assert rig.leds()[5] == BLUE
+
+
+def test_loop_pad_toggles_loop(rig):
+    rig.press('store')
+    rig.tap(6)
+    assert rig.song.loop and rig.leds()[6] == RED
+    rig.tap(6)
+    assert not rig.song.loop
+
+
+def test_loop_start_pad_moves_the_start_and_keeps_the_end(rig):
+    rig.song.loop_start, rig.song.loop_length = 8.0, 8.0
+    rig.song.click_in_arrangement(12.0)
+    rig.press('store')
+    rig.tap(7)
+    assert (rig.song.loop_start, rig.song.loop_length) == (12.0, 4.0)
+    rig.song.click_in_arrangement(4.0)
+    rig.tap(7)
+    assert (rig.song.loop_start, rig.song.loop_length) == (4.0, 12.0)
+
+
+def test_loop_start_pad_past_the_end_moves_the_whole_loop(rig):
+    rig.song.loop_start, rig.song.loop_length = 8.0, 8.0
+    rig.song.click_in_arrangement(20.0)
+    rig.press('store')
+    rig.tap(7)
+    assert (rig.song.loop_start, rig.song.loop_length) == (20.0, 8.0)
+
+
+def test_loop_end_pad_sets_the_end_at_the_needle(rig):
+    rig.song.loop_start, rig.song.loop_length = 8.0, 8.0
+    rig.song.click_in_arrangement(12.0)
+    rig.press('store')
+    rig.tap(8)
+    assert (rig.song.loop_start, rig.song.loop_length) == (8.0, 4.0)
+
+
+def test_loop_end_pad_before_the_loop_start_shows_message(rig):
+    rig.song.loop_start, rig.song.loop_length = 8.0, 8.0
+    rig.song.click_in_arrangement(4.0)
+    rig.press('store')
+    rig.tap(8)
+    assert (rig.song.loop_start, rig.song.loop_length) == (8.0, 8.0)
+    assert 'The loop end must be after the loop start' in rig.h.messages
+
+
+def test_zoom_pads_zoom_the_arrangement_in_and_out(rig):
+    rig.press('store')
+    rig.tap(9)
+    rig.tap(10)
+    assert rig.h.c.application.view.zooms == [(3, 'Arranger'), (2, 'Arranger')]   # right = in, left = out
+
+
+class _FakeSocket:
+
+    def __init__(self):
+        self.sent = []
+
+    def sendto(self, data, address):
+        self.sent.append((data, address))
+
+
+def test_pan_pads_send_scroll_messages_to_the_helper(rig):
+    helper = rig.h.script._scroll_socket = _FakeSocket()
+    rig.press('store')
+    for pad in (11, 12, 13, 14):
+        rig.tap(pad)
+    assert [data for data, _ in helper.sent] == [b'scroll -200 0', b'scroll 200 0', b'scroll 0 -200', b'scroll 0 200']
+    assert helper.sent[0][1] == ('127.0.0.1', 9817)
+    assert rig.h.c.application.view.zooms == []
+
+
+def test_record_started_in_live_shows_on_the_pad(rig):
+    rig.press('store')
+    rig.clear()
+    rig.song.record_mode = True
+    seen = set()
+    for _ in range(8):
+        rig.advance(0.1)
+        seen.add(rig.leds()[1])
+    assert RED in seen
+
+
+def test_shift_pad_selects_and_arms_track_in_record_mode(rig):
+    rig.press('store')
+    rig.shift_tap(5)
+    assert rig.selected is rig.track(5)
+    assert rig.track(5).arm and not rig.track(5).solo
+
+
+def test_shift_held_in_record_mode_shows_the_tracks(rig):
+    rig.press('store')
+    rig.clear()
+    rig.button_down('shift')
+    leds = rig.leds()
+    assert leds[1] == RED and leds[16] == BLUE
+    rig.button_up('shift')
+    assert rig.leds()[16] == OFF
+
+
+def test_leaving_record_mode_gives_the_pads_back_to_the_tracks(rig):
+    rig.press('store')
+    rig.press('chan')
+    rig.tap(5)
+    assert rig.selected is rig.track(5)
+    assert rig.leds()[5] == RED
+
+
+def test_page_picker_works_in_record_mode(rig):
+    rig.press('store')
     rig.press('ext sync')
     rig.tap(2)
-    rig.press('store')
-    rig.turn(1)
-    assert rig.track(9).mixer_device.sends[0].value > 0
+    assert not rig.song.record_mode
+    rig.shift_tap(1)
+    assert rig.selected is rig.track(17)
+
+
+# --- arming ved sporvalg -----------------------------------------------------
+
+def test_selecting_a_track_in_rack_mode_arms_only_that_track(rig):
+    rig.tap(3)
+    rig.tap(5)
+    assert [t.arm for t in rig.song.tracks].count(True) == 1 and rig.track(5).arm
+
+
+def test_selecting_a_track_in_volume_mode_does_not_arm(rig):
+    rig.press('recall')
+    rig.tap(5)
+    assert not rig.track(5).arm
+
+
+def test_track_that_cannot_be_armed_is_selected_and_arming_left_alone(rig):
+    rig.tap(3)
+    rig.track(5).can_be_armed = False
+    rig.tap(5)
+    assert rig.selected is rig.track(5)
+    assert rig.track(3).arm and not rig.track(5).arm
+
+
+def test_track_selected_in_live_is_not_armed(rig):
+    rig.song.view.selected_track = rig.track(6)
+    assert not rig.track(6).arm
 
 
 # --- nullstilling med shift + encoder ----------------------------------------
@@ -244,13 +443,6 @@ def test_shift_encoder_resets_volume_to_default_not_zero(rig):
     assert rig.track(3).mixer_device.volume.value < 0.85
     _shift_turn(rig, 3)
     assert rig.track(3).mixer_device.volume.value == 0.85
-
-
-def test_shift_encoder_resets_send(rig):
-    rig.press('store')
-    rig.turn(11, ticks=5)
-    _shift_turn(rig, 11)
-    assert rig.track(3).mixer_device.sends[1].value == 0
 
 
 def test_shift_encoder_without_rack_still_shows_message(rig):

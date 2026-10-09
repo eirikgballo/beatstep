@@ -11,3 +11,13 @@ class MidiMap:
     @staticmethod
     def forward_midi_cc(script_handle, midi_map_handle, channel, cc):
         midi_map_handle.ccs.add((channel, cc))
+
+
+class Application:
+
+    class Application:
+
+        class View:
+
+            class NavDirection:
+                up, down, left, right = range(4)

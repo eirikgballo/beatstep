@@ -9,6 +9,7 @@ from .Encoders import feel, turn
 class RackMode:
 
     name = 'Rack'
+    arms_on_select = True
 
     def __init__(self, song, show_message, accelerator):
         self._song          = song

@@ -9,7 +9,10 @@ See DESIGN.md for the full specification and SIGNALS.md for measured hardware be
 
 from collections import OrderedDict
 import io
+import math
 import os
+import socket
+import subprocess
 import time
 
 import Live
@@ -21,7 +24,7 @@ from . import Sysex
 from . import Encoders
 from .Encoders import Accelerator, feel, turn
 from .RackMode import RackMode
-from .SendsMode import SendsMode
+from .RecordMode import RecordMode
 from .TrackPads import LOOP_START_PAD, TrackPads
 from .VolumeMode import VolumeMode
 
@@ -89,6 +92,12 @@ MIDI_MESSAGES_PER_TICK = 16
 # The environment variable lets the tests point at their own file.
 SETTINGS_PATH = os.environ.get('BEATSTEP_Q_SETTINGS') or os.path.join(os.path.dirname(__file__), 'Innstillinger.py')
 SETTINGS_CHECK_TICKS = 10
+# Where tools/scrollhjelper listens. It turns the script's messages into scroll events for Live.
+SCROLL_HELPER_ADDRESS = ('127.0.0.1', 9817)
+# The environment variable lets the tests run without starting the helper.
+SCROLL_HELPER_PATH = os.environ.get('BEATSTEP_Q_SCROLL_HELPER') or os.path.join(
+    os.path.dirname(__file__), 'tools', 'scrollhjelper', 'beatstep-scroll')
+_PAN_DIRECTIONS = {'left': (-1, 0), 'right': (1, 0), 'up': (0, -1), 'down': (0, 1)}
 
 # Reverse-lookup map built once at import time for O(1) dispatch.
 _PAD_NOTE_TO_INDEX = {note: i for i, note in enumerate(PAD_MSG_IDS)}
@@ -109,12 +118,19 @@ class BeatStep(ControlSurface):
         # replaces the queued one, so blinking and repaints don't pile up.
         self._midi_queue = OrderedDict()
         self._shift_held = False
+        self._shift_used = False  # a pad, a knob or another button was used while shift was held
+        self._shift_pressed_at = 0.0
+        # Shift released within this many seconds, with nothing else touched, is a tap: it switches the view.
+        self._shift_tap_time = 0.4  # SHIFT_TRYKK in Innstillinger.py
         self._stop_held = False
         self._settings_mtime = None
         self._ticks = 0
-        self._load_settings(announce=False)
         self._stop_used = False  # a pad or the transpose knob was used while stop was held
         self._stopped_target = None  # where scrubbing has put the needle while the song is stopped
+        self._pan_step = 200  # pixels per press on a pan pad (PAN_STEG in Innstillinger.py)
+        self._scroll_socket = None
+        self._scroll_helper = None
+        self._scrub_snap = 0.0  # grid for scrubbing in beats (SCRUB_SNAP in Innstillinger.py), 0 = free
         self._play_check = None
         self._seq_mode = False
         # No try/except: if a component fails, Live should show the error instead of a silent, dead controller.
@@ -125,13 +141,17 @@ class BeatStep(ControlSurface):
         )
         self._accelerator = Accelerator()
         # Mode button CC → mode. The script always boots in Rack mode.
+        rack = RackMode(self.song(), self.show_message, self._accelerator)
+        self._record_mode = RecordMode(self.song(), self.show_message, rack, self._move_arrangement_view)
         self._modes = {
-            BTN_CHAN_CC:   RackMode(self.song(), self.show_message, self._accelerator),
+            BTN_CHAN_CC:   rack,
             BTN_RECALL_CC: VolumeMode(self.song(), self._pads, self._accelerator),
-            BTN_STORE_CC:  SendsMode(self.song(), self._pads, self._accelerator),
+            BTN_STORE_CC:  self._record_mode,
         }
-        self._mode = self._modes[BTN_CHAN_CC]
-        self._pads.variation_source = self._modes[BTN_CHAN_CC]
+        self._mode = rack
+        self._pads.variation_source = rack
+        self._load_settings(announce=False)
+        self._start_scroll_helper()
         self._schedule_hardware_setup()
         self.request_rebuild_midi_map()
 
@@ -143,7 +163,28 @@ class BeatStep(ControlSurface):
         ControlSurface.port_settings_changed(self)
         self._schedule_hardware_setup()
 
+    def _start_scroll_helper(self):
+        """Start the scroll helper the pan pads need (macOS, see tools/scrollhjelper). It runs as long as
+        Live does. If one is already running, the new one finds the port taken and exits."""
+        if not os.path.isfile(SCROLL_HELPER_PATH):
+            return
+        try:
+            log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+            if not os.path.isdir(log_dir):
+                os.makedirs(log_dir)
+            log = open(os.path.join(log_dir, 'scrollhjelper.log'), 'w')
+            self._scroll_helper = subprocess.Popen([SCROLL_HELPER_PATH, '--stopp-med-forelder'],
+                                                   stdout=log, stderr=log)
+            log.close()
+        except Exception as error:  # the controller must work without the pan pads
+            self.log_message('BeatStep: could not start the scroll helper (%s)' % error)
+
     def disconnect(self):
+        if self._scroll_helper is not None:
+            try:
+                self._scroll_helper.terminate()
+            except Exception:
+                pass
         self._pads.cleanup()
         for hw, _ in _BUTTONS:
             if hw != Sysex.STOP_HW_INDEX:
@@ -190,10 +231,26 @@ class BeatStep(ControlSurface):
             if mtime is not None:
                 with io.open(SETTINGS_PATH, encoding='utf-8') as f:
                     exec(compile(f.read(), SETTINGS_PATH, 'exec'), settings)
+            first_track = settings.get('STARTSPOR', 1)
+            if isinstance(first_track, bool) or not isinstance(first_track, int) or first_track < 1:
+                raise ValueError('STARTSPOR must be a whole number from 1')
+            pan_step = settings.get('PAN_STEG', 200)
+            if isinstance(pan_step, bool) or not isinstance(pan_step, int) or pan_step < 1:
+                raise ValueError('PAN_STEG must be a whole number from 1')
+            tap_time = settings.get('SHIFT_TRYKK', 0.4)
+            if isinstance(tap_time, bool) or not isinstance(tap_time, (int, float)) or tap_time < 0:
+                raise ValueError('SHIFT_TRYKK must be 0 or a positive number of seconds')
+            snap = settings.get('SCRUB_SNAP', 0)
+            if isinstance(snap, bool) or not isinstance(snap, (int, float)) or snap < 0:
+                raise ValueError('SCRUB_SNAP must be 0 or a positive number of beats')
             Encoders.configure(settings)
         except Exception as error:  # a typo in the file must not take the controller down
             self.show_message('BeatStep: error in Innstillinger.py, keeping the old values (%s)' % error)
             return
+        self._pads.set_first_track(first_track)
+        self._scrub_snap = float(snap)
+        self._pan_step = pan_step
+        self._shift_tap_time = float(tap_time)
         if announce:
             self.show_message('BeatStep: Innstillinger.py loaded')
 
@@ -247,13 +304,15 @@ class BeatStep(ControlSurface):
         if note not in _PAD_NOTE_TO_INDEX:
             return
         idx = _PAD_NOTE_TO_INDEX[note]
+        self._shift_used = True
         if velocity > 0 and self._stop_held:
             self._play_from_marker(idx)
-        elif velocity > 0 and self._shift_held:
+        elif velocity > 0 and self._shift_held and self._mode is not self._record_mode:
             self._pads.toggle_solo(idx)
         elif velocity > 0:
+            # In Record mode the pads are actions, and with shift held they are the tracks again.
             was_picking = self._pads.picking_page
-            self._pads.on_pad_press(idx)
+            self._pads.on_pad_press(idx, arm=self._mode.arms_on_select)
             if self._pads.picking_page != was_picking:
                 self._update_button_leds()
         else:
@@ -261,6 +320,8 @@ class BeatStep(ControlSurface):
 
     def _handle_cc(self, cc, value):
         """Encoders and function buttons."""
+        if cc != BTN_SHIFT_CC:
+            self._shift_used = True
         if ENCODER_CC_BASE <= cc < ENCODER_CC_BASE + 16:
             self._mode.on_encoder(cc - ENCODER_CC_BASE, value, reset=self._shift_held)
         elif cc == TRANSPOSE_CC and self._stop_held:
@@ -270,6 +331,15 @@ class BeatStep(ControlSurface):
         elif cc in _BUTTON_CCS:
             if cc == BTN_SHIFT_CC:
                 self._shift_held = value > 0
+                self._sync_pad_actions()
+                if self._shift_held:
+                    self._shift_used = False
+                    self._shift_pressed_at = time.monotonic()
+                    # The firmware puts its own overlay on the pads while shift is held.
+                    self._pads.update_leds(force=True)
+                elif not self._shift_used and time.monotonic() - self._shift_pressed_at <= self._shift_tap_time:
+                    # A short tap on shift alone. A longer hold is a look at the tracks or a change of mind.
+                    self._toggle_main_view()
             elif cc == BTN_STOP_CC:
                 # While stop is held the pads show the markers and stop + pad plays from one.
                 # The firmware turns the pads off when stop is pressed, so all of them are repainted.
@@ -295,13 +365,12 @@ class BeatStep(ControlSurface):
                     if DEBUG_TRANSPORT:
                         self.log_message('BeatStep: stop tap -> %s, needle %.3f -> %.3f'
                                          % (action, before, self.song().current_song_time))
-            elif cc == BTN_EXTSYNC_CC and value > 0 and self._shift_held:
-                self._toggle_main_view()
             elif cc == BTN_EXTSYNC_CC and value > 0:
                 self._pads.toggle_page_picker()
             elif cc in self._modes and value > 0 and self._modes[cc] is not self._mode:
                 self._mode = self._modes[cc]
                 self._pads.close_variation_picker()
+                self._sync_pad_actions()
                 self.show_message('BeatStep: %s mode' % self._mode.name)
             elif cc == BTN_CHAN_CC and value > 0:
                 # chan pressed while already in Rack mode: open or close the variation picker.
@@ -317,6 +386,12 @@ class BeatStep(ControlSurface):
                 # While a button is held the firmware shows its own overlay on the pads (or the sequencer
                 # runs its step indicator), and on release it restores its own colors, not ours.
                 self._update_leds()
+
+    def _sync_pad_actions(self):
+        # Record mode turns the pads into actions. Holding shift gives the tracks back, for selecting one.
+        showing = self._mode is self._record_mode and not self._shift_held
+        self._pads.actions = self._record_mode if showing else None
+        self._pads.update_leds()
 
     def _update_leds(self):
         # Called after setup and after a button release, where the firmware has put its own colors on the pads.
@@ -361,9 +436,30 @@ class BeatStep(ControlSurface):
             self.log_message('BeatStep: MIDI queue drained')
 
     def _toggle_main_view(self):
-        """Shift + ext sync: switch between Session and Arrangement, like Tab in Live."""
+        """A tap on shift: switch between Session and Arrangement, like Tab in Live."""
         view = self.application().view
         view.show_view('Arranger' if view.is_view_visible('Session') else 'Session')
+
+    def _move_arrangement_view(self, action):
+        """One step in the Arrangement: 'zoom in' or 'zoom out' (horizontal), or pan 'left', 'right', 'up'
+        or 'down'.
+
+        Live has no call for panning (seen in Live: scroll_view moves the needle or the track selection,
+        and the picture stays). So panning is sent to the scroll helper, which makes a scroll event for the
+        window under the mouse pointer. Without the helper running nothing happens."""
+        if action in _PAN_DIRECTIONS:
+            dx, dy = _PAN_DIRECTIONS[action]
+            message = 'scroll %d %d' % (dx * self._pan_step, dy * self._pan_step)
+            try:
+                if self._scroll_socket is None:
+                    self._scroll_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self._scroll_socket.sendto(message.encode('ascii'), SCROLL_HELPER_ADDRESS)
+            except (OSError, socket.error) as error:
+                self.show_message('BeatStep: could not reach the scroll helper (%s)' % error)
+            return
+        nav = Live.Application.Application.View.NavDirection
+        direction = nav.right if action == 'zoom in' else nav.left
+        self.application().view.zoom_view(direction, 'Arranger', False)
 
     def _play_from_marker(self, index):
         """Jump to marker 1–15, counted from the start of the song, or to the loop start (last pad),
@@ -393,14 +489,29 @@ class BeatStep(ControlSurface):
             return
         song = self.song()
         if song.is_playing:
-            song.jump_by(max(beats, -song.current_song_time))  # not past the start of the song
+            target = self._scrub_target(song.current_song_time, beats)
+            song.jump_by(target - song.current_song_time)
             return
         # Stopped: the script keeps the position itself. What Live reads back right after a move is the old
         # value (the move is carried out after the script returns), so counting from it loses detents.
         if self._stopped_target is None:
             self._stopped_target = song.current_song_time
-        self._stopped_target = max(0.0, self._stopped_target + beats)
+        self._stopped_target = self._scrub_target(self._stopped_target, beats)
         song.current_song_time = self._stopped_target  # shows the needle there
+
+    def _scrub_target(self, position, beats):
+        """Where a scrub of `beats` from `position` lands, never before the start of the song. With a grid
+        every detent moves at least one grid step, a fast spin several, and it always lands on the grid."""
+        snap = self._scrub_snap
+        if snap <= 0:
+            return max(0.0, position + beats)
+        steps = max(1, int(round(abs(beats) / snap)))
+        if beats < 0:
+            steps = -steps
+        # From a position between two lines, the first detent goes to the nearest line in that direction.
+        line = position / snap
+        line = math.floor(line + 1e-6) if steps > 0 else math.ceil(line - 1e-6)
+        return max(0.0, (line + steps) * snap)
 
     def _play_from(self, target):
         """Start playback at `target` from a stopped song.

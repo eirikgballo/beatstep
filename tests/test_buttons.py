@@ -22,28 +22,31 @@ def test_firmware_lit_buttons_are_turned_off(rig):
     assert 'stop' not in leds          # stop has no LED
 
 
-# --- bytt visning med shift + ext sync --------------------------------------
+# --- bytt visning med et kort trykk på shift ---------------------------------
 
-def test_shift_ext_sync_toggles_between_session_and_arrangement(rig):
+def test_shift_tap_toggles_between_session_and_arrangement(rig):
     view = rig.h.c.application.view
-    rig.button_down('shift')
-    rig.press('ext sync')
+    rig.press('shift')
     assert view.visible == 'Session'
-    rig.press('ext sync')
+    rig.press('shift')
     assert view.visible == 'Arranger'
+
+
+def test_shift_used_for_something_does_not_switch_the_view(rig):
+    rig.shift_tap(5)                                   # solo
+    rig.button_down('shift')
+    rig.turn(3, interval=0.05)                         # reset
     rig.button_up('shift')
-
-
-def test_shift_ext_sync_does_not_open_the_page_picker(rig):
     rig.button_down('shift')
     rig.press('ext sync')
     rig.button_up('shift')
-    assert not rig.h.script._pads.picking_page
-    assert rig.button_leds()['ext sync'] == OFF
+    assert rig.h.c.application.view.visible == 'Arranger'
 
 
-def test_ext_sync_alone_does_not_change_the_view(rig):
-    rig.press('ext sync')
+def test_shift_held_for_a_while_does_not_switch_the_view(rig):
+    rig.button_down('shift')
+    rig.advance(0.6)
+    rig.button_up('shift')
     assert rig.h.c.application.view.visible == 'Arranger'
 
 

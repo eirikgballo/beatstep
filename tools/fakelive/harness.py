@@ -47,6 +47,7 @@ class FakeApplicationView:
 
     def __init__(self):
         self.visible = 'Arranger'
+        self.zooms = []  # (retning, visning) for hvert zoom_view-kall
 
     def is_view_visible(self, name):
         return name == self.visible
@@ -55,6 +56,9 @@ class FakeApplicationView:
         if name not in ('Session', 'Arranger'):
             raise RuntimeError('Unknown view %r' % name)
         self.visible = name
+
+    def zoom_view(self, direction, view_name, modifier_pressed):
+        self.zooms.append((direction, view_name))
 
 
 class FakeApplication:

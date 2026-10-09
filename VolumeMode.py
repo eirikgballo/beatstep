@@ -4,12 +4,12 @@ Encoder N always belongs to the same track as pad N.
 """
 
 from .Encoders import feel, turn
-from .TrackPads import PADS_PER_PAGE
 
 
 class VolumeMode:
 
     name = 'Volume'
+    arms_on_select = False
 
     def __init__(self, song, pads, accelerator):
         self._song          = song
@@ -20,7 +20,6 @@ class VolumeMode:
         delta = self._accelerator.delta(encoder_index, value, feel('volume'))
         if delta is None:
             return
-        track_index = self._pads.page * PADS_PER_PAGE + encoder_index
-        tracks = self._song.tracks
-        if track_index < len(tracks):
-            turn(tracks[track_index].mixer_device.volume, delta, reset)
+        track = self._pads.track_for_pad(encoder_index)
+        if track is not None:
+            turn(track.mixer_device.volume, delta, reset)

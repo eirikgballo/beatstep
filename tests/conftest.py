@@ -135,6 +135,8 @@ class Rig:
 def clock(monkeypatch, tmp_path):
     # Brukerens Innstillinger.py skal ikke påvirke testene: uten fil gjelder standardverdiene.
     monkeypatch.setenv('BEATSTEP_Q_SETTINGS', str(tmp_path / 'Innstillinger.py'))
+    # Scrollhjelperen skal ikke startes av testene: stien peker på en fil som ikke finnes.
+    monkeypatch.setenv('BEATSTEP_Q_SCROLL_HELPER', str(tmp_path / 'beatstep-scroll'))
     c = Clock()
     monkeypatch.setattr(time, 'monotonic', c)
     monkeypatch.setattr(time, 'sleep', lambda seconds: None)  # pausen mellom sysex skal ikke bremse testene

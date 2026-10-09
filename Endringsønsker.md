@@ -16,6 +16,47 @@ Mal:
 
 ## Åpne
 
+### Scrub som snapper til rutenett
+- **Dato:** 2026-10-09
+- **Ønske:** hvert hakk på hjulet under scrubbing skal flytte nåla en sekstendel og lande på rutenettet.
+- **Hvorfor:** fri scrubbing lander mellom strekene.
+- **Status:** i arbeid (kode og tester ferdige 2026-10-09, må prøves i Live)
+- **Notater:**
+  - Lives rutenett og «Snap to Grid» finnes ikke i API-et. Løst med `SCRUB_SNAP` i `Innstillinger.py`
+    (slag, 0.25 = sekstendeler, 0 = av).
+  - Raskt spinn flytter flere steg per hakk, men lander på rutenettet.
+
+### Arming ved sporvalg og Record-modus i stedet for Sends
+- **Dato:** 2026-10-09
+- **Ønske:** sporet som velges med pad i Rack-modus skal også armes. Sends-modus (store) byttes ut med en
+  Record-modus: pad 1 opptak av/på, pad 2 undo, pad 3 redo, pad 4 metronom, pad 5 markør på nåla (lag/fjern),
+  pad 6 loop av/på, pad 7 sett loopstart, pad 8 sett loopslutt.
+- **Hvorfor:** Sends-modus brukes lite, og opptak og angre må i dag gjøres på Macen.
+- **Status:** i arbeid (kode og tester ferdige 2026-10-09, må prøves i Live)
+- **Notater:**
+  - Avklart: arrangement-opptak (den runde knappen), og padden gjør bare klart, den starter ikke avspilling.
+  - Sporvalg i Record-modus er shift + pad (velger og armer). Store + pad og recall + pad ble forkastet:
+    firmwaren lagrer/laster preset og skjuler pad-fargene. Solo finnes ikke i Record-modus.
+  - Armingen er eksklusiv, og skjer bare ved pad-trykk, ikke når spor velges i Live.
+  - Encoderne styrer makroene som i Rack-modus.
+  - Må sjekkes i Live: at sporfargene vises mens shift holdes (firmwaren har eget lysbilde der), .
+  - Prøvd i Live 2026-10-09: pad 1 startet avspilling. Årsaken var Lives innstilling «Start Transport With
+    Record» (Record Warp Launch). Med den av gjør pad 1 bare klart til opptak. Bekreftet av brukeren.
+  - Lagt til samme dag: pad 1 blinker rødt mens opptak er på, og `STARTSPOR` i `Innstillinger.py`.
+  - Pad 9 og 10 zoomer inn og ut i arrangementet (`zoom_view`). Bekreftet i Live 2026-10-09.
+  - Panorering av tidslinja er ikke mulig: `scroll_view` flyttet nåla, ikke bildet (sett i Live). API-et har
+    ikke noe kall for å panorere eller scrolle visningen.
+  - Sett i Live: sporvalg fra scriptet flytter ikke bildet til sporet, og `scroll_view` opp/ned flytter bare
+    sporvalget. Panorering er derfor lagt utenfor Live: pad 11–14 sender til scrollhjelperen
+    (`tools/scrollhjelper`), som lager scroll-hendelser. Bekreftet i Live 2026-10-09: bildet flytter seg i alle
+    fire retninger. Da var hjelperen startet for hånd i en terminal.
+  - Scriptet starter og stopper nå hjelperen selv sammen med Live. macOS krevde at Live fikk
+    Tilgjengelighet-tilgang, og Live måtte startes på nytt etterpå. Bekreftet i Live 2026-10-09.
+    Hjelperen skriver til `logs/scrollhjelper.log`.
+  - Visningsbyttet (Tab) er flyttet fra shift + ext sync til et kort trykk på shift alene. Ikke prøvd i Live.
+  - Z/X på tastaturet (zoom til markering og tilbake) finnes ikke i API-et.
+  - Flere pad-funksjoner vurderes etter bruk. Capture MIDI trengs ikke.
+
 ### Enkel justering av encoder-følsomhet
 - **Dato:** 2026-10-08
 - **Ønske:** justere følsomheten for encoderne selv, enkelt, uten å lete i koden. For eksempel et tall fra 1 til 10
@@ -24,7 +65,7 @@ Mal:
 - **Status:** i arbeid (kode og tester ferdige 2026-10-08, må prøves i Live)
 - **Notater:**
   - Avklart med brukeren: per modus, skala 1–10.
-  - Løsning: `Innstillinger.py` med to tall (rolig, rask) for RACK, VOLUM, SENDS, TRANSPOSE og SCRUB.
+  - Løsning: `Innstillinger.py` med to tall (rolig, rask) for RACK, VOLUM, TRANSPOSE og SCRUB.
     Fila leses på nytt mens Live kjører.
   - Akselerasjonen: tre tall (ROLIG_TID, RASK_TID, KURVE) var for mye og satt feil. Erstattet med ett tall, KAST
     (1–10), og fart målt som hakk siste 0,1 s. Skalaen er satt etter måling av brukerens vridning (se `SIGNALS.md`).
@@ -50,10 +91,10 @@ Mal:
     viste hvilke kall som virker (se `SIGNALS.md`). Bekreftet i Live.
   - Ikke bekreftet: stop + pad 16 (loopstart) mens låta står stille.
 
-### Følelsen i Volum- og Sends-modus
+### Følelsen i Volum-modus
 - **Dato:** 2026-10-07
-- **Ønske:** egen encoder-følelse for Volum og Sends, f.eks. minste steg 0,5 % som transpose-knappen.
-- **Hvorfor:** et sakte hakk flytter bare 0,2 % av området, så det tar lang tid å flytte volum og sends.
+- **Ønske:** egen encoder-følelse for Volum, f.eks. minste steg 0,5 % som transpose-knappen.
+- **Hvorfor:** et sakte hakk flytter bare 0,2 % av området, så det tar lang tid å flytte volum.
 - **Status:** avklares (må kjennes på i Live)
 - **Notater:** kan nå prøves direkte i `Innstillinger.py`: `VOLUM = (5, 5)` gir 0,5 % per hakk som transpose-hjulet.
 

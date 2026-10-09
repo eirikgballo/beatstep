@@ -14,8 +14,8 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 - Use the BeatStep as a focused mixing controller for Ableton Live. Many features in the original repo are not needed here.
 - The original repo [raphaelquast/beatstep](https://github.com/raphaelquast/beatstep) is a useful reference for sysex and
   MIDI Remote Script structure. This implementation is deliberately narrower in scope.
-- **Three encoder modes**, chosen with dedicated buttons: **Rack** (macros), **Volume** (track volumes), **Sends** (send A/B).
-- **Pads always select tracks** (tap) and toggle solo (`shift` + pad, without selecting), in every mode.
+- **Three modes**, chosen with dedicated buttons: **Rack** (macros), **Volume** (track volumes), **Record** (pad actions for recording).
+- **Pads select tracks** (tap) and toggle solo (`shift` + pad, without selecting) in Rack and Volume mode. In Record mode the pads are actions.
 - **Track pages** of 16 tracks, chosen with the page picker (`ext sync`, then pad N).
 
 ---
@@ -56,7 +56,7 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 |------|--------|------------------------|-----------------------|
 | Rack (default on boot) | `chan` | blue | Macro 1–16 of the first Audio Effect Rack on the selected track |
 | Volume | `recall` | blue | Volume of the 16 tracks on the current page |
-| Sends | `store` | red | Encoder 1–8: send A of tracks 1–8 of the send page. Encoder 9–16: send B of the same tracks |
+| Record | `store` | red | The same macros as in Rack mode. The pads are actions (see Record mode below) |
 
 - Pressing a mode button switches to that mode. Pressing `recall` or `store` again while active does nothing
   (only repaints). Pressing `chan` again in Rack mode opens the variation picker (see below).
@@ -64,7 +64,7 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 - The transpose encoder controls the **volume of the selected track** in every mode.
   With `shift` held it **resets** that volume to its default (0 dB).
 - `shift` + encoder 1–16 **resets** the parameter the encoder controls to its default value
-  (`parameter.default_value`), like a double-click in Live: macro to its default, volume to 0 dB, send to −∞.
+  (`parameter.default_value`), like a double-click in Live: macro to its default, volume to 0 dB.
   One detent in either direction is enough, and further turning with `shift` held changes nothing.
 - The script always boots in Rack mode. The mode is not remembered between sessions.
 
@@ -72,7 +72,45 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 
 ## 4. Control Assignments
 
-### Pads (all modes)
+### Pads (Rack and Volume mode)
+
+Selecting a track with a pad in **Rack mode** (and with `shift` + pad in Record mode) also **arms** it for
+recording and disarms every other track. Live only does that on a mouse click, so the script does it itself.
+A track that can't be armed (group) is only selected, and the arming is left as it was. Volume mode and
+selecting a track in Live never change the arming.
+
+### Record mode
+
+| Pad | Action | LED |
+|-----|--------|-----|
+| 1 | Arrangement record on/off (`song.record_mode`). Only arms the recording, it doesn't start playback (needs Live's preference *Start Transport With Record* set to Off) | blinks red = on, blue = off |
+| 2 | Undo (`song.undo()`). Nothing to undo → status bar `"Nothing to undo"` | blue = possible, off = nothing to undo |
+| 3 | Redo (`song.redo()`) | blue = possible, off = nothing to redo |
+| 4 | Metronome on/off (`song.metronome`) | red = on, blue = off |
+| 5 | Marker at the needle: adds one, or removes the one that is there (`song.set_or_delete_cue()`) | red = the needle is on a marker, blue = not |
+| 6 | Loop on/off (`song.loop`) | red = on, blue = off |
+| 7 | Set the loop start at the needle. The end stays, unless the needle is at or past it: then the whole loop moves | blue |
+| 8 | Set the loop end at the needle. At or before the loop start → status bar `"The loop end must be after the loop start"` | blue |
+| 9 | Zoom in on the Arrangement, one step (`application.view.zoom_view(right, 'Arranger', False)`) | magenta |
+| 10 | Zoom out, one step (`left`) | magenta |
+| 11–14 | Pan the Arrangement left, right, up, down, `PAN_STEG` pixels per press (see the scroll helper below) | blue |
+| 15–16 | Unused | off |
+
+- `shift` held: the pads show the tracks again, and `shift` + pad **selects and arms** the track. There is no
+  solo in Record mode. The script repaints the pads when `shift` is pressed, over the firmware's overlay.
+- The LEDs follow changes made in Live (polled every tick, there are no listeners).
+- The page picker, the markers (`stop` held) and the sequencer warning take precedence over the actions.
+- **Scroll helper**: Live's API can't pan or scroll the Arrangement. Seen in Live: `scroll_view` moves the needle
+  (left/right) or the track selection (up/down), and selecting a track from the script doesn't bring it into
+  view. The pan pads therefore send `scroll <dx> <dy>` (pixels) as UDP to `127.0.0.1:9817`, where
+  `tools/scrollhjelper/beatstep-scroll` (Swift, macOS only) posts a scroll event. The event goes to the window
+  under the mouse pointer, the helper needs Accessibility permission, and without it running the pads do nothing.
+  The script starts the helper when Live loads it and stops it on disconnect. With `--stopp-med-forelder` the
+  helper also exits by itself when Live is gone. Its output goes to `logs/scrollhjelper.log`.
+- `store` + pad was rejected as the select gesture: the firmware stores a preset and hides the pad colors.
+  `recall` + pad would load another preset and wipe the script's setup.
+
+### Pads in Rack and Volume mode
 
 | Action | Result |
 |--------|--------|
@@ -89,13 +127,13 @@ Hardware facts (MIDI messages, LED addresses, firmware side effects) are **measu
 |------|------------------|
 | Rack | Macro N of the cached rack. No rack → status bar `"No Audio Effect Rack on selected track"` |
 | Volume | Volume of track `page_start + N`. No track → ignored |
-| Sends | N ≤ 8: send A of track `send_start + N`. N > 8: send B of track `send_start + N - 8`. Missing track or send → ignored |
+| Record | As Rack |
 
 ### Pages
 
 - Pads and Volume: page P covers tracks `16·(P−1) + 1` … `16·P`.
-- Sends: page P covers tracks `8·(P−1) + 1` … `8·P`. Sends has its own 8-track paging, so the same
-  page N shows different tracks in Sends than on the pads. This is a deliberate choice.
+- `STARTSPOR` in `Innstillinger.py` (default 1) is the track on pad 1 of page 1. The tracks above it have no
+  pad and no Volume encoder, and the pages count from it. Changing it while Live runs goes back to page 1.
 - Page changes repaint all pad LEDs.
 - If tracks are removed so the current page is empty, the page stays and all pads show black.
 
@@ -136,8 +174,8 @@ the mode, so it counts `cntrl/seq` presses and assumes control mode on start. In
 |--------|--------|
 | `chan` | Rack mode. Pressed again in Rack mode: opens or closes the variation picker |
 | `recall` | Volume mode |
-| `store` | Sends mode |
-| `shift` | Modifier for `shift` + pad (solo), `shift` + encoder and `shift` + transpose (reset to default), and `shift` + `ext sync` (switch between Session and Arrangement, like Tab) |
+| `store` | Record mode |
+| `shift` | Modifier for `shift` + pad (solo, or select track in Record mode), `shift` + encoder and `shift` + transpose (reset to default). A short tap on `shift` alone (released within `SHIFT_TRYKK` seconds from `Innstillinger.py`, default 0.4, nothing else touched) switches between Session and Arrangement, like Tab |
 | `cntrl/seq` | Firmware toggles sequencer mode. Script shows the sequencer mode warning (see above) |
 | `stop` | Pressed on its own: stops playback in Live, or starts it if the song is stopped (on release): from where it stopped, or from the new position if it was scrubbed while stopped. Held: the pads show the markers (blue = marker exists) and the loop start (pad 16, magenta), `stop` + pad plays from there, and `stop` + transpose scrubs. Firmware also sends MIDI Stop, which Live ignores |
 | `play` | Firmware starts its sequencer. Script only repaints on release |
@@ -193,7 +231,7 @@ Encoders.py    Relative decoding, time-based acceleration, clamped parameter wri
 Innstillinger.py  The user's settings: sensitivity per mode and the acceleration curve (not imported, read as text)
 RackMode.py    Encoders → macros of the first Audio Effect Rack
 VolumeMode.py  Encoders → volumes of the 16 tracks on the current page
-SendsMode.py   Encoders → send A/B of 8 tracks (own 8-track paging)
+RecordMode.py  Pads → record, undo, redo, loop. Encoders → macros, through RackMode
 ```
 
 Each mode is a small class with `on_encoder(index, value)`. `BeatStep` holds the active mode and routes
@@ -211,7 +249,8 @@ encoder input to it. Shared behaviour lives in `TrackPads` and `Encoders`, never
 | `track.devices`, `class_name == "AudioEffectGroupDevice"` | First rack on the selected track |
 | `device.parameters[1..16]` | Macros (index 0 is device on/off) |
 | `track.mixer_device.volume` | Volume mode and transpose encoder |
-| `track.mixer_device.sends[0]`, `[1]` | Send A and B |
+| `track.arm`, `track.can_be_armed` | Arming on track select |
+| `song.record_mode`, `undo()`, `redo()`, `can_undo`, `can_redo`, `loop`, `loop_start`, `loop_length`, `metronome`, `set_or_delete_cue()` | Record mode pads |
 
 Return tracks and the master track are not addressable from the pads. Master volume has no control on the BeatStep (`shift` + transpose was master volume until it became reset).
 
@@ -247,8 +286,13 @@ as a fraction of the parameter range. A single detent after a pause is 10 per se
 The time between two single detents was used first, but it is too jittery: Live hands MIDI to the script in
 clumps, and normal turning (measured 10–40 detents/s) was treated as fast (see SIGNALS.md).
 
+**Scrub grid**: `SCRUB_SNAP` in `Innstillinger.py` is a grid in beats (0 = free, the default without the file).
+With a grid every detent moves at least one step, a fast spin several, and the position always lands on the grid.
+From between two lines the first detent goes to the nearest line in that direction. Live's own arrangement grid
+and *Snap to Grid* are not in the API, so the script can't follow them.
+
 **Settings file**: the user tunes the feel in `Innstillinger.py`: two levels from 1 to 10 (slow, fast) for each of
-`RACK`, `VOLUM`, `SENDS`, `TRANSPOSE` and `SCRUB`, plus `KAST` from 1 to 10: how fast the knob must be spun for
+`RACK`, `VOLUM`, `TRANSPOSE` and `SCRUB`, plus `KAST` from 1 to 10: how fast the knob must be spun for
 the full step (`FULL` = 135 · 1.3^(KAST − 5) detents per second, `START` = `FULL` / 3).
 Levels are logarithmic: slow step = 0.2 % · 1.58^(level − 3), full-speed step =
 2.2 % · 1.5^(level − 5), and `MAX` is the difference. Scrub uses the same levels in beats (fraction · 125).
@@ -256,7 +300,7 @@ Levels are logarithmic: slow step = 0.2 % · 1.58^(level − 3), full-speed step
 Live runs. A mistake in the file shows a status message and keeps the previous values; a missing file or a
 missing name gives the defaults in `Encoders.DEFAULT_SETTINGS`.
 
-**Parameter writes**: always clamp to `[param.min, param.max]`. Macro range is 0–127, volume and sends 0–1.
+**Parameter writes**: always clamp to `[param.min, param.max]`. Macro range is 0–127, volume 0–1.
 
 **Solo gesture**: `shift` + pad. A double tap was tried first; selecting on the first tap made it impossible to
 solo without selecting, and delaying the selection by 400 ms felt too slow.

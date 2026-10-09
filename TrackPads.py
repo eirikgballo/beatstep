@@ -5,6 +5,7 @@ TrackPads — the pads in every mode.
   - Track paging, 16 tracks per page
   - Pad LEDs, including the red/magenta blink for a selected + soloed track
   - The variation picker: the pads recall the macro variations of the rack on the selected track
+  - Pad actions: in Record mode the pads belong to the mode instead of the tracks
 """
 
 import time
@@ -27,6 +28,8 @@ class TrackPads:
         self._send_midi     = send_midi
 
         self._page = 0
+        # Tracks at the top of the set that the pads skip (STARTSPOR in Innstillinger.py, minus one).
+        self._skipped = 0
 
         # True while the pads show the page picker instead of tracks.
         self.picking_page = False
@@ -34,6 +37,9 @@ class TrackPads:
         # True while the pads show the variation picker. `variation_source` is the RackMode, set by BeatStep.
         self.picking_variation = False
         self.variation_source = None
+
+        # Set by BeatStep while the pads are actions of a mode (the RecordMode) instead of tracks.
+        self.actions = None
 
         # True while the BeatStep is in sequencer mode: the pads don't send notes, so instead of
         # track colors all pads blink red as a warning.
@@ -120,8 +126,10 @@ class TrackPads:
             if pad_index < self._page_count():
                 return Sysex.COLOR_BLUE
             return Sysex.COLOR_OFF
+        if self.actions is not None:
+            return self.actions.pad_color(pad_index, self._blink_on)
 
-        track = self._track_for_pad(pad_index)
+        track = self.track_for_pad(pad_index)
 
         if track is None:
             color = Sysex.COLOR_OFF
@@ -141,9 +149,13 @@ class TrackPads:
         """Called every ~100 ms from update_display. Drives the solo blink and the sequencer mode warning."""
         interval = WARNING_BLINK_INTERVAL if self.suspended else BLINK_INTERVAL
         blink_on = int(time.monotonic() / interval) % 2 == 0
-        if blink_on == self._blink_on:
-            return
+        blink_changed = blink_on != self._blink_on
         self._blink_on = blink_on
+        if self.actions is not None:
+            # No listeners on record, undo and loop: follow them from here. Unchanged pads cost nothing.
+            self.update_leds()
+        if not blink_changed:
+            return
         if self.suspended:
             self.update_leds()
             return
@@ -154,16 +166,16 @@ class TrackPads:
         if self.picking_page:
             return
         for pad_index in range(PADS_PER_PAGE):
-            if getattr(self._track_for_pad(pad_index), 'solo', False):
+            if getattr(self.track_for_pad(pad_index), 'solo', False):
                 self._send_pad_led(pad_index)
 
     # ------------------------------------------------------------------
     # Track helpers
     # ------------------------------------------------------------------
 
-    def _track_for_pad(self, pad_index):
+    def track_for_pad(self, pad_index):
         """Return the Live track for pad 0-15 on the current page, or None."""
-        track_index = self._page * PADS_PER_PAGE + pad_index
+        track_index = self._skipped + self._page * PADS_PER_PAGE + pad_index
         tracks = self._song.tracks
         if track_index < len(tracks):
             return tracks[track_index]
@@ -173,7 +185,8 @@ class TrackPads:
     # Pad input
     # ------------------------------------------------------------------
 
-    def on_pad_press(self, pad_index):
+    def on_pad_press(self, pad_index, arm=False):
+        """`arm` also arms the selected track for recording, and disarms the others."""
         if self.picking_variation:
             self.variation_source.recall_variation(pad_index)
             self.update_leds()
@@ -181,16 +194,32 @@ class TrackPads:
         if self.picking_page:
             self._go_to_page(pad_index)
             return
+        if self.actions is not None:
+            self.actions.on_pad(pad_index)
+            self.update_leds()
+            return
 
-        track = self._track_for_pad(pad_index)
+        track = self.track_for_pad(pad_index)
         if track is None:
             return
 
         self._song.view.selected_track = track
+        if arm:
+            self._arm_only(track)
+
+    def _arm_only(self, track):
+        # Live only disarms the other tracks on a mouse click, not when a script arms one.
+        # Groups and returns can't be armed: then the arming is left as it is.
+        if not getattr(track, 'can_be_armed', False):
+            return
+        for other in self._song.tracks:
+            wanted = other == track
+            if other.can_be_armed and other.arm != wanted:
+                other.arm = wanted
 
     def toggle_solo(self, pad_index):
         """Toggle solo on the pad's track without selecting it (shift + pad). Ignored in the page picker."""
-        track = self._track_for_pad(pad_index)
+        track = self.track_for_pad(pad_index)
         if self.picking_page or self.picking_variation or track is None:
             return
         track.solo = not track.solo
@@ -210,7 +239,15 @@ class TrackPads:
         return self._page
 
     def _page_count(self):
-        return max(1, -(-len(self._song.tracks) // PADS_PER_PAGE))  # ceil division, at least one page
+        tracks = len(self._song.tracks) - self._skipped
+        return max(1, -(-tracks // PADS_PER_PAGE))  # ceil division, at least one page
+
+    def set_first_track(self, number):
+        """Put track `number` (1-based) on pad 1 of page 1. The tracks above it get no pad."""
+        if number - 1 != self._skipped:
+            self._skipped = number - 1
+            self._page = 0
+            self.update_leds()
 
     def toggle_page_picker(self):
         """Enter or leave the page picker, where pad N chooses page N."""

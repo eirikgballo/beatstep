@@ -92,6 +92,8 @@ class Track(_Listenable):
         self.devices = devices or []
         self.mixer_device = _MixerDevice(n_sends=2)
         self._solo = False
+        self.can_be_armed = True  # False for grupper og returer i Live
+        self.arm = False
 
     @property
     def solo(self):
@@ -172,6 +174,12 @@ class Song(_Listenable):
         self._continue_from = None
         self.tempo = 120.0
         self.loop_start = 0.0
+        self.loop_length = 16.0
+        self.loop = False
+        self.metronome = False
+        self.record_mode = False  # den runde opptaksknappen for arrangementet
+        self.undo_steps = 0
+        self.redo_steps = 0
         self.master_track = MasterTrack()
         self.view = _SongView(self._tracks[0] if self._tracks else self.master_track)
 
@@ -215,6 +223,34 @@ class Song(_Listenable):
             self.current_song_time = self._time + beats
         else:
             self.current_song_time = self.start_time + beats
+
+    @property
+    def can_undo(self):
+        return self.undo_steps > 0
+
+    @property
+    def can_redo(self):
+        return self.redo_steps > 0
+
+    def undo(self):
+        if not self.can_undo:
+            raise RuntimeError('Nothing to undo')
+        self.undo_steps -= 1
+        self.redo_steps += 1
+
+    def redo(self):
+        if not self.can_redo:
+            raise RuntimeError('Nothing to redo')
+        self.redo_steps -= 1
+        self.undo_steps += 1
+
+    def set_or_delete_cue(self):
+        """Som Set-knappen i Live: fjerner markøren på nåla, eller lager en der."""
+        here = [cue for cue in self.cue_points if cue.time == self._time]
+        if here:
+            self.cue_points = tuple(cue for cue in self.cue_points if cue not in here)
+        else:
+            self.add_marker('Markør', self._time)
 
     # Hjelpere for å simulere endringer gjort i Live-UI-et.
 

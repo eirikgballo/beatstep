@@ -19,7 +19,6 @@
 #            rolig  rask
 RACK      = (  4,    8 )    # encoder 1–16 i Rack-modus (makroer)
 VOLUM     = (  3,    5 )    # encoder 1–16 i Volum-modus
-SENDS     = (  3,    5 )    # encoder 1–16 i Sends-modus
 TRANSPOSE = (  5,    5 )    # det store hjulet: volum på valgt spor
 SCRUB     = (  3,    6 )    # det store hjulet mens stop holdes: flytter spillehodet
 
@@ -38,3 +37,37 @@ SCRUB     = (  3,    6 )    # det store hjulet mens stop holdes: flytter spilleh
 # ---------------------------------------------------------------------------
 
 KAST = 5
+
+# ---------------------------------------------------------------------------
+# STARTSPOR: sporet i Live som havner på pad 1. Med 3 hopper padene over de to øverste sporene,
+# som da ikke kan velges, soloes eller armes fra BeatStepen. Gjelder også encoderne i Volum-modus.
+# 1 = alle spor er med.
+# ---------------------------------------------------------------------------
+
+STARTSPOR = 3
+
+# ---------------------------------------------------------------------------
+# SCRUB_SNAP: rutenett for scrubbing (stop + det store hjulet), i slag. Hvert hakk flytter nåla minst
+# ett steg og lander alltid på rutenettet. Raskt spinn flytter flere steg per hakk (styres av SCRUB over).
+#
+#   0.25 = sekstendeler    0.5 = åttedeler    1 = slag    4 = takter i 4/4    0 = av (fri scrubbing)
+#
+# Scriptet kan ikke lese rutenettet i Live, så dette følger ikke «Snap to Grid» der.
+# ---------------------------------------------------------------------------
+
+SCRUB_SNAP = 0.25
+
+# ---------------------------------------------------------------------------
+# PAN_STEG: hvor langt bildet flytter seg per trykk på pad 11–14 i Record-modus, i piksler.
+# Krever at scrollhjelperen kjører (tools/scrollhjelper) og at musepekeren ligger over arrangementet.
+# ---------------------------------------------------------------------------
+
+PAN_STEG = 200
+
+# ---------------------------------------------------------------------------
+# SHIFT_TRYKK: et kort trykk på shift alene bytter mellom Session og Arrangement (som Tab).
+# Tallet er hvor lenge, i sekunder, shift kan holdes og fortsatt regnes som et kort trykk.
+# Bytter den når du ikke mente det: senk tallet. Må du trykke for kjapt: øk det. 0 = av.
+# ---------------------------------------------------------------------------
+
+SHIFT_TRYKK = 0.4

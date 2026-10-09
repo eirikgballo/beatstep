@@ -41,14 +41,13 @@ class Feel:
 DEFAULT_SETTINGS = {
     'RACK':      (3, 5),
     'VOLUM':     (3, 5),
-    'SENDS':     (3, 5),
     'TRANSPOSE': (5, 5),
     'SCRUB':     (3, 6),
     'KAST':      6,
 }
 
 # Feel name used by the script → setting name.
-_FEEL_SETTINGS = {'rack': 'RACK', 'volume': 'VOLUM', 'sends': 'SENDS', 'transpose': 'TRANSPOSE', 'scrub': 'SCRUB'}
+_FEEL_SETTINGS = {'rack': 'RACK', 'volume': 'VOLUM', 'transpose': 'TRANSPOSE', 'scrub': 'SCRUB'}
 
 # Scrub steps are in beats instead of a fraction of a parameter range.
 _SCRUB_BEATS = 125.0
@@ -103,7 +102,7 @@ def configure(settings):
 
 
 def feel(name):
-    """The current Feel for 'rack', 'volume', 'sends', 'transpose' or 'scrub'."""
+    """The current Feel for 'rack', 'volume', 'transpose' or 'scrub'."""
     return _feels[name]
 
 
